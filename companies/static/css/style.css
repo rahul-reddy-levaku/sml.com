@@ -1,0 +1,376 @@
+/* ================== GLOBAL RESET ================== */
+* { box-sizing: border-box; }
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;         /* ⬅ horizontal scroll now ALLOWED (was hidden) */
+  font-family: 'Segoe UI', sans-serif;
+  background: #f8f9fa;
+  color: #333;
+}
+
+/* ================== FIXED HEADER ================== */
+.fixed-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 72px;
+  background: #173651;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  z-index: 1000;
+}
+.fixed-header .logo { display: flex; align-items: center; gap: 12px; margin-left: 18px; }
+.fixed-header .logo img { height: 48px; }
+.top-nav a { color: #fff; margin-left: 24px; text-decoration: none; }
+.top-nav a:hover { text-decoration: underline; }
+
+/* ================== TOGGLE BUTTON ================== */
+.sidebar-toggle-btn {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  font-size: 24px;
+  color: #fff;
+  background: #173651;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  z-index: 1100;
+  transition: background-color .3s;
+}
+.sidebar-toggle-btn:hover { background: #0f2b41; }
+
+/* ================== SIDEBAR ================== */
+.sidebar {
+  position: fixed;
+  top: 72px;
+  left: 0;
+  width: 250px;
+  height: calc(100vh - 72px);
+  background: #0c1d32;
+  color: #fff;
+  overflow-y: auto;
+  transition: transform .3s;
+  z-index: 999;
+}
+.sidebar.collapsed { transform: translateX(-250px); }
+.sidebar ul { list-style: none; padding: 0; margin: 0; }
+.sidebar ul li { padding: 12px 20px; }
+.sidebar ul li a { color: #fff; text-decoration: none; display: block; cursor: pointer; }
+.sidebar ul li a:hover { background: #193a5a; }
+
+/* dropdown */
+.sidebar .dropdown-menu { display: none; opacity: 0; transform: translateY(4px); transition: opacity .2s, transform .2s; }
+.sidebar .dropdown.open > .dropdown-menu {
+  display: block;
+  background: #132a44;
+  padding-left: 10px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ================== MAIN CONTENT ================== */
+.dashboard-flex { display: flex; }
+.admin-main-content {
+  margin-left: 250px;
+  padding: 100px 32px 32px;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: margin-left .3s;
+}
+.sidebar.collapsed ~ .admin-main-content { margin-left: 0; }
+
+/* ================== GRID TABLE ================== */
+.table { width: 100%; border-collapse: collapse; background: #fff; }
+.table th, .table td { padding: 10px 12px; border: 1px solid #ccc; text-align: left; }
+.table th { background: #173651; color: #fff; }
+.table-responsive { overflow-x: auto; margin-top: 0 !important; }
+.content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+
+/* ================== BUTTONS ================== */
+.btn { padding: 8px 16px; border: none; cursor: pointer; border-radius: 4px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary   { background: #007bff; color: #fff; }
+.btn-warning   { background: #ffc107; color: #000; }
+.btn-danger    { background: #dc3545; color: #fff; }
+.btn-secondary { background: #6c757d; color: #fff; }
+
+/* ================== MODALS ================== */
+/* Hidden by default; JS sets style.display = "flex" or adds .show */
+.modal,
+#login-modal {
+  display: none;            /* keep hidden by default (preserves JS logic) */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;             /* full viewport width */
+  height: 100vh;            /* full viewport height */
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 3000;
+
+  /* enable outer overlay scrolling, no inner form scroll */
+  overflow-y: auto;
+
+  /* center modal content when visible */
+  justify-content: center;
+  align-items: flex-start;  /* align slightly from top */
+  padding-top: 6vh;         /* push content ~6vh from top */
+}
+
+/* Optional helper if you prefer class toggling instead of inline styles */
+.modal.show,
+#login-modal.show {
+  display: flex;
+}
+
+.modal-content {
+  background: #fff;
+  padding: 24px 32px;
+  border-radius: 8px;
+
+  /* Wider, auto-adjusting to data */
+  width: min(1320px, 92vw);
+  max-width: none;
+
+  /* No inner scroll; let overlay scroll */
+  max-height: none;
+  overflow-y: visible;
+
+  position: relative;
+}
+
+.modal .close-btn,
+.modal-content .btn-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 24px;
+  color: #333;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* ================== FORM SECTIONS ================== */
+.form-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 20px 0 12px;
+  padding: 6px 12px;
+  background: #e9f3ff;
+  color: #173651;
+  border-left: 4px solid #007bff;
+  text-transform: uppercase;
+}
+
+/* form fields */
+.row { display: flex; flex-wrap: wrap; margin: 0 -8px; }
+.col-md-6  { flex: 0 0 50%;  max-width: 50%;  padding: 0 8px; }
+.col-md-12 { flex: 0 0 100%; max-width: 100%; padding: 0 8px; }
+.modal-body label { font-weight: 600; display: block; margin-bottom: 5px; }
+.modal-body input,
+.modal-body select,
+.modal-body textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  transition: border-color .2s;
+}
+.modal-body input:focus,
+.modal-body select:focus,
+.modal-body textarea:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0,123,255,.2);
+}
+.modal-body .form-text   { font-size: 12px; color: #6c757d; }
+.modal-body .text-danger { font-size: 12px; margin-top: 4px; }
+.modal-body .row         { margin: 10px 0; }
+
+/* inline options: radios/checkboxes side-by-side */
+.modal-body .form-check,
+.modal-body .checkbox,
+.modal-body .radio,
+.modal-body .form-check-inline {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 14px;
+  margin-bottom: 8px;
+}
+
+/* modal footer */
+.modal-footer {
+  padding-top: 16px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* ================== RESPONSIVE ================== */
+@media screen and (max-width: 768px) {
+  .sidebar { width: 200px; }
+  .sidebar.collapsed { transform: translateX(-200px); }
+  .admin-main-content { margin-left: 200px; width: calc(100% - 200px); }
+  .sidebar.collapsed ~ .admin-main-content { margin-left: 0; width: 100%; }
+  .col-md-6 { flex: 0 0 100%; max-width: 100%; }
+  .modal-content { padding: 20px; width: 94%; max-width: 94vw; }
+}
+
+/* ================== HOMEPAGE HERO ================== */
+.home-hero {
+  width: 100vw;
+  padding: 120px 40px 60px;
+  background: linear-gradient(to right,#173651,#28527a);
+  color: #fff;
+  text-align: center;
+  min-height: calc(100vh - 72px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.home-intro h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 20px; }
+.home-intro h1 span { color: #ffc107; }
+.home-intro p.lead { font-size: 1.2rem; margin-bottom: 16px; }
+.home-intro a.btn { font-size: 1rem; padding: 10px 20px; }
+
+/* ================== USER META ================== */
+.user-meta {
+  margin-left: auto;
+  margin-right: 20px;
+  font-size: 14px;
+  color: #fff;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+/* ================== IMAGE PREVIEW MODAL ================== */
+#image-preview-modal .modal-content { max-width: 480px; text-align: center; }
+/* Fix selector to match the JS/HTML id (#image-preview) */
+#image-preview-modal #image-preview { width: 100%; height: auto; border-radius: 4px; }
+
+/* ═══ FINAL OVERRIDE: disable ALL hover-opens ═══ */
+.sidebar .dropdown:not(.open):hover > .dropdown-menu,
+.sidebar .dropdown:not(.open):hover .dropdown-menu,
+.sidebar ul li.dropdown:not(.open):hover > .dropdown-menu {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ===== Pro Login polish (namespaced) ===== */
+.pro-login h2 { margin: 0 0 4px; color: #173651; font-size: 22px; letter-spacing: .2px; }
+.pro-login h2 .thin { font-weight: 400; opacity: .9; }
+.pro-login .subnote { margin: 0 0 10px; color: #6b7a90; font-size: 13px; }
+
+.pro-login label { display:block; margin-top: 12px; margin-bottom: 6px; font-weight: 600; color: #2b3a4a; }
+.pro-login .form-control { height: 44px; border-radius: 10px; border: 1px solid #cfd6df; padding: 0 12px; }
+.pro-login .form-control:focus { border-color: #2d6cdf; box-shadow: 0 0 0 3px rgba(45,108,223,.15); outline: none; }
+
+.pro-passwrap { position: relative; }
+.pro-toggle-pass {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  border: 0; background: #f0f4f8; padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 12px;
+}
+
+.pro-hint { margin-top: 6px; color: #a05a00; font-size: 12px; }
+.pro-otp { margin-top: 10px; }
+
+.pro-row { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+.pro-row .remember { color: #4c5d70; font-size: 13px; display: inline-flex; gap: 8px; align-items: center; }
+.pro-link { font-size: 13px; text-decoration: none; }
+.pro-link:hover { text-decoration: underline; }
+
+.pro-login-error { background: #ffe9ea; color: #b21a1a; border: 1px solid #ffced1;
+  padding: 10px 12px; border-radius: 10px; margin: 10px 0; }
+.pro-login-error[hidden] { display:none !important; }
+
+.pro-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+.pro-submit { position: relative; min-width: 130px; }
+.pro-submit .btn-spinner {
+  width: 16px; height: 16px; border: 2px solid #fff; border-bottom-color: transparent; border-radius: 50%;
+  margin-left: 8px; display: none; animation: spin .9s linear infinite;
+}
+.pro-submit.loading .btn-spinner { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.pro-meta { margin-top: 10px; text-align: center; color: #6b7a90; font-size: 12px; }
+
+/* Slightly nicer modal container (optional) */
+.modal-content.pro-login { border-radius: 16px; border: 1px solid #e9eef3; box-shadow: 0 20px 50px rgba(0,0,0,.18); }
+/* Inline username/password */
+.pro-row-inline {
+  display: flex;
+  gap: 12px;
+}
+
+.pro-row-inline .pro-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.pro-passwrap {
+  display: flex;
+  align-items: center;
+}
+
+.pro-toggle-pass {
+  margin-left: 6px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  background: #e9ecef;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+@media (max-width: 600px) {
+  .pro-row-inline {
+    flex-direction: column;
+  }
+}
+/* ==== FINAL LOGIN TOGGLE FIX (non-destructive overrides) ==== */
+.pro-passwrap {
+  display: flex !important;
+  align-items: center !important;
+  position: relative;                /* keep for future use, but flex is primary */
+  gap: 6px;                          /* gentle spacing between input and button */
+}
+
+.pro-passwrap input[type="password"],
+.pro-passwrap input[type="text"] {
+  flex: 1 1 auto;                    /* input takes remaining width */
+  min-width: 0;                      /* prevents overflow in flex */
+}
+
+/* Make the toggle a normal inline button, not absolutely positioned */
+.pro-toggle-pass {
+  position: static !important;
+  right: auto !important;
+  top: auto !important;
+  transform: none !important;
+  margin-left: 6px;                  /* space from the input */
+  z-index: 1;                        /* stay above input borders */
+  pointer-events: auto !important;   /* ensure it can be clicked */
+  user-select: none;
+}
+
+/* Guard against any overlay blocking clicks in the modal */
+#login-modal,
+#login-modal .modal-content {
+  pointer-events: auto;
+}

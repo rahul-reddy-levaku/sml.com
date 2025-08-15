@@ -1,0 +1,234 @@
+{% load static %}
+{% load custom_tags %}
+
+<div class="grid-container" data-entity="{{ entity }}">
+  <!-- Header with Add Button -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>{{ pretty_entity }}</h2>
+
+    {% if user.is_superuser %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+    {% elif profile and profile.is_admin %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+    {% elif profile and profile.is_master %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+
+    {# Data Entry scope #}
+    {% elif profile and profile.is_data_entry and entity|lower|in_list:"client,loanapplication,recoveryposting" %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+
+    {# Accounting scope #}
+    {% elif profile and profile.is_accounting and entity|lower|in_list:"voucher,posting,accounthead" %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+
+    {# Manager: union of DE + ACC menus #}
+    {% elif profile and profile.is_manager and entity|lower|in_list:"client,loanapplication,recoveryposting" %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+    {% elif profile and profile.is_manager and entity|lower|in_list:"voucher,posting,accounthead" %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+
+    {# Recovery Agent: RecoveryPosting only #}
+    {% elif profile and profile.is_recovery_agent and entity|lower == "recoveryposting" %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+
+    {# Reports & Auditor: enable Add for report entities #}
+    {% elif profile and profile.is_reports and entity|lower|in_list:"fieldreport,weeklyreport,monthlyreport" %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+    {% elif profile and profile.is_auditor and entity|lower|in_list:"fieldreport,weeklyreport,monthlyreport" %}
+      <button
+        class="btn btn-success btn-add"
+        id="create-{{ entity }}-btn"
+        data-open-entity="{{ entity }}"
+        onclick="openEntityModal('{{ entity }}')"
+        role="button">
+        <i class="fas fa-plus"></i> Add
+      </button>
+    {% endif %}
+  </div>
+
+  <!-- TABLE / GROUP LOOP -->
+  {% for group_name, objects in grouped_objects.items %}
+    <div class="mb-4">
+      {% if group_name %}
+        <h5 class="text-primary">{{ group_name }}</h5>
+      {% endif %}
+
+      {% if objects and objects.0 %}
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                {% for field in objects.0|get_fields %}
+                  {% if field.name|in_list:"extra_data,raw_csv_data,password" %}
+                    {# skip hidden common #}
+                  {% elif entity|lower == "staff" and field.name|in_list:"status,ifsc,bank,designation" %}
+                    {# skip staff extras in grid #}
+                  {% elif entity|lower == "userprofile" and field.name|in_list:"is_admin,is_master,is_data_entry,is_accounting,is_recovery_agent,is_auditor,is_manager" %}
+                    {# hide permissions from profile grid #}
+                  {% else %}
+                    {% if entity|lower == "userprofile" and field.name == "user" %}
+                      <th>Username</th>
+                    {% else %}
+                      <th>{{ field.verbose_name|replace_underscore }}</th>
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+                {% for col in column_fields %}
+                  <th>{{ col.label }}</th>
+                {% endfor %}
+                <th>Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {% for obj in objects %}
+                {# Only-active rows. Avoid parentheses in Django if. #}
+                {% with st=obj|attr:"status" ia=obj|attr:"is_active" ac=obj|attr:"active" stn=st|default_if_none:"__none__" ian=ia|default_if_none:"__none__" acn=ac|default_if_none:"__none__" %}
+                  {% if st|stringformat:"s"|lower == "active" or st|stringformat:"s" == "1" or ia or ac or stn == "__none__" and ian == "__none__" and acn == "__none__" %}
+                    <tr data-id="{{ obj.pk }}">
+                      {% for field in obj|get_fields %}
+                        {% if field.name|in_list:"extra_data,raw_csv_data,password" %}
+                          {# skip cell #}
+                        {% elif entity|lower == "staff" and field.name|in_list:"status,ifsc,bank,designation" %}
+                          {# skip cell #}
+                        {% elif entity|lower == "userprofile" and field.name|in_list:"is_admin,is_master,is_data_entry,is_accounting,is_recovery_agent,is_auditor,is_manager" %}
+                          {# skip cell #}
+                        {% else %}
+                          <td>
+                            {% if entity|lower == "userprofile" and field.name == "user" %}
+                              {{ obj.extra_data|get_item:"auth_username"|default_if_none:"" }}
+                            {% else %}
+                              {% if field.name|in_list:"photo,live_photo,house_photo,logo,image" and obj|attr:field.name %}
+                                <a href="{{ obj|attr:field.name }}"
+                                   class="image-link"
+                                   data-code="{{ obj.code|default_if_none:'' }}"
+                                   data-name="{{ obj.name|default_if_none:'' }}"
+                                   data-status="{{ obj.status|default_if_none:'' }}"
+                                   title="Preview {{ obj.name|default:pretty_entity }}">
+                                  View
+                                </a>
+                              {% else %}
+                                {{ obj|attr:field.name|format_ddmmyyyy }}
+                              {% endif %}
+                            {% endif %}
+                          </td>
+                        {% endif %}
+                      {% endfor %}
+
+                      {% for col in column_fields %}
+                        <td>
+                          {% if col.field_type == 'file' and obj.extra_data|get_item:col.field_name %}
+                            <a href="{{ obj.extra_data|get_item:col.field_name }}" target="_blank" title="Download File">View</a>
+                          {% else %}
+                            {{ obj.extra_data|get_item:col.field_name|format_ddmmyyyy }}
+                          {% endif %}
+                        </td>
+                      {% endfor %}
+
+                      <td class="d-flex gap-1">
+                        <button
+                          class="btn btn-sm btn-warning btn-edit"
+                          data-edit-entity="{{ entity }}"
+                          data-id="{{ obj.pk }}"
+                          onclick="editEntity('{{ entity }}', {{ obj.pk }})"
+                          aria-label="Edit {{ obj }}" title="Edit {{ obj }}">
+                          <i class="fas fa-edit"></i> Edit
+                        </button>
+
+                        <!-- Always show Delete; backend will block where policy forbids -->
+                        <button
+                          class="btn btn-sm btn-danger btn-delete"
+                          data-delete-entity="{{ entity }}"
+                          data-id="{{ obj.pk }}"
+                          onclick="deleteEntity('{{ entity }}', {{ obj.pk }})"
+                          aria-label="Delete {{ obj }}" title="Delete {{ obj }}">
+                          <i class="fas fa-trash"></i> Delete
+                        </button>
+                      </td>
+                    </tr>
+                  {% endif %}
+                {% endwith %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-warning">
+          No records found under {{ group_name|default:"this group" }}.
+        </div>
+      {% endif %}
+    </div>
+  {% empty %}
+    <div class="alert alert-info">No data available.</div>
+  {% endfor %}
+</div>
+
+{% include "companies/modal_form.html" %}
+
+<!-- Keep delete buttons visible even if some global CSS tries to hide them -->
+<style>
+  .btn-danger{display:inline-flex!important;visibility:visible!important;opacity:1!important}
+</style>

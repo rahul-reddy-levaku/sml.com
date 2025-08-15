@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Spoorthi MACS Ltd.,</title>
+    <link rel="icon" href="/static/images/smlLogo1.ico" type="image/x-icon">
+
+    <!-- Main CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    <!-- 📞 intl-tel-input (country-code dropdown) -->
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.4/build/css/intlTelInput.css">
+
+    <!-- 🔒 final no-hover / yes-click rules (must follow main CSS) -->
+    <style>
+      .sidebar .dropdown-menu { display:none !important; }
+      .sidebar .dropdown.open > .dropdown-menu { display:block !important; }
+      .sidebar .dropdown:hover > .dropdown-menu,
+      .sidebar .dropdown:hover .dropdown-menu { display:none !important; }
+    </style>
+
+    <!-- Flatpickr Calendar -->
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
+    <!-- 📞 intl-tel-input script -->
+    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.4/build/js/intlTelInput.min.js"></script>
+
+    <!-- Main JS -->
+    <script src="/static/js/script.js" defer></script>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- Header -->
+<header class="fixed-header">
+    <div class="header-left">
+        <div class="logo">
+            <img src="/static/images/smlLogo1.ico" alt="Logo">
+            <strong>Spoorthi MACS Ltd.,</strong>
+        </div>
+    </div>
+
+    {% if user.is_authenticated %}
+        <div class="header-center user-meta" style="font-size: 14px; color: #f2f2f2;">
+            {% comment %} Name {% endcomment %}
+            <span>
+                <strong>
+                {% if header_user_display_name %}
+                    {{ header_user_display_name }}
+                {% else %}
+                    {{ user.get_full_name|default:user.username }}
+                {% endif %}
+                </strong>
+            </span>
+
+            {% comment %} Branch {% endcomment %}
+            {% if header_branch_name %}
+                <span> • Branch: <strong>{{ header_branch_name }}</strong></span>
+            {% elif user.userprofile and user.userprofile.branch %}
+                <span> • Branch: <strong>{{ user.userprofile.branch.name }}</strong></span>
+            {% elif staff_info and staff_info.branch %}
+                <span> • Branch: <strong>{{ staff_info.branch.name }}</strong></span>
+            {% endif %}
+
+            {% comment %} Role {% endcomment %}
+            {% if header_role_label %}
+                <span> • <span class="role-badge">{{ header_role_label }}</span></span>
+            {% elif user.is_superuser %}
+                <span> • <span class="role-badge">Superuser</span></span>
+            {% elif user.is_staff %}
+                <span> • <span class="role-badge">Staff</span></span>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <nav class="top-nav header-right">
+        <a href="#">About</a>
+        <a href="#">Career</a>
+        {% if user.is_authenticated %}
+            <a href="{% url 'logout' %}">Logout</a>
+
+            {# ── NEW: Login different user (Switch Account) ── #}
+            <form action="{% url 'switch_account' %}" method="post" style="display:inline; margin-left: 10px;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-warning" style="vertical-align: middle;">
+                    Login different user
+                </button>
+            </form>
+        {% else %}
+            <a href="#" onclick="openLoginModal()">Login</a>
+        {% endif %}
+    </nav>
+</header>
+
+<!-- Login Modal -->
+{% include "companies/login_modal.html" %}
+
+<!-- Main Layout -->
+<div class="dashboard-flex">
+    {% block content %}{% endblock %}
+</div>
+
+<!-- Flatpickr JS -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+</body>
+</html>

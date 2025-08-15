@@ -1,0 +1,606 @@
+{# templates/companies/modal_form.html #}
+{% load custom_tags %}
+
+<style>
+  #entity-modal { overflow-y: auto; }
+  #entity-modal .modal-content{
+    width: min(1320px, 92vw);
+    max-width: 92vw;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+  #entity-modal .modal-body{
+    max-height: none;
+    overflow: visible;
+  }
+  #entity-modal .modal-header,
+  #entity-modal .modal-footer{
+    position: sticky;
+    top: 0;
+    bottom: 0;
+    z-index: 2;
+    background: #fff;
+  }
+  #entity-modal .modal-header{ top: 0; border-bottom: 1px solid #eee; }
+  #entity-modal .modal-footer{ bottom: 0; border-top: 1px solid #eee; }
+
+  #entity-modal .modal-body .form-check,
+  #entity-modal .modal-body .checkbox,
+  #entity-modal .modal-body .radio,
+  #entity-modal .modal-body .form-check-inline{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 14px;
+    margin-bottom: 8px;
+  }
+
+  .pro-passwrap { position: relative; }
+  .pro-passwrap input[type="password"],
+  .pro-passwrap input[type="text"] { padding-right: 42px !important; }
+  .pro-passwrap [data-toggle-pass]{
+    position: absolute; right: 8px; top: 50%;
+    transform: translateY(-50%);
+    padding: 6px 8px; line-height: 1;
+  }
+
+  .is-invalid,
+  .has-error input,
+  .has-error select,
+  .has-error textarea{
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 .2rem rgba(220,53,69,.15);
+  }
+  .text-danger.small-error { font-size: 12px; margin-top: 4px; }
+
+  #form-message-box{
+    display:none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    z-index: 99999; align-items: center; justify-content: center;
+  }
+  #form-message-box .box{
+    background: #fff; width: min(560px, 90vw); border-radius: 12px; padding: 18px 20px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.25);
+  }
+  #form-message-box .box h5{ margin: 0 0 8px; }
+  #form-message-box .box .msg{ color:#444; }
+  #form-message-box .box .actions{ text-align: right; margin-top: 14px; }
+
+  #camera-capture-modal{ display:none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 99998; }
+  #camera-capture-modal .cam-sheet{
+    background:#fff; width:min(800px, 94vw); margin: 5vh auto; border-radius: 12px; padding: 16px;
+  }
+  #camera-capture-modal video, #camera-capture-modal canvas{ width:100%; border-radius: 10px; background:#000; }
+  #camera-capture-modal .cam-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
+</style>
+
+<div id="entity-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header" style="margin-bottom:12px;">
+      <h5 id="entity-modal-title" class="modal-title">
+        {% if edit_mode %}Edit {{ entity|pretty }}{% else %}Create {{ entity|pretty }}{% endif %}
+      </h5>
+      <button type="button" class="close-btn" onclick="closeEntityModal()">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <div id="form-errors"></div>
+
+      <form id="entity-form"
+            data-entity="{{ entity }}"
+            method="post"
+            enctype="multipart/form-data"
+            novalidate>
+        {% csrf_token %}
+        {% if edit_mode %}
+          <input type="hidden" name="object_id" value="{{ object_id }}">
+        {% endif %}
+
+        {% if entity == "role" %}
+          <div class="form-section-title">Role Level</div>
+          <div class="mb-3 d-flex gap-3" id="role-level-switches">
+            <label><input type="checkbox" id="role-master-switch"> <span>Master&nbsp;(admin)</span></label>
+            <label><input type="checkbox" id="role-staff-switch">  <span>Staff</span></label>
+            <label><input type="checkbox" id="role-report-switch"> <span>Report&nbsp;viewer</span></label>
+          </div>
+        {% endif %}
+
+        {% if section_map %}
+          {% for section, fields in section_map.items %}
+            <div class="form-section-title">{{ section }}</div>
+            <div class="row">
+              {% for fname in fields %}
+                {% with field=form|get_field:fname %}
+                  {% if field and not field.is_hidden %}
+                    <div class="col-md-6 mb-3">
+                      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                      {% if field.name == "password" %}
+                          <div class="pro-passwrap">
+                            {{ field }}
+                            <button type="button"
+                                    class="btn btn-light btn-sm"
+                                    data-toggle-pass
+                                    title="Show password"
+                                    aria-pressed="false">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                          </div>
+                      {% elif field.name == "phone" %}
+                          {{ field|add_class:"intl-phone" }}
+                      {% elif field.name in "code,voucher_no,smtcode,staffcode,VCode,empcode"|split:"," and not edit_mode %}
+                          {{ field|add_class:"autocode" }}
+                          <script>setTimeout(()=>{const c=document.getElementById("{{ field.id_for_label }}");if(c){c.readOnly=true;c.placeholder="auto";}},0);</script>
+                      {% elif field.name == "photo" and entity|lower == "staff" %}
+                          <div class="d-flex gap-2 align-items-center">
+                            {{ field|add_attr:"accept=image/*"|add_attr:"capture=environment" }}
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-open-camera>Use Camera</button>
+                          </div>
+                      {% else %}
+                          {{ field }}
+                      {% endif %}
+                      {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                      {% for err in field.errors %}<div class="text-danger small-error">{{ err }}</div>{% endfor %}
+                    </div>
+                  {% endif %}
+                {% endwith %}
+              {% endfor %}
+            </div>
+          {% endfor %}
+        {% endif %}
+
+        {% for field in form.visible_fields %}
+          {% if not section_map or field.name not in section_map.values|flatten %}
+            {% if field.name != "extra_data" %}
+              <div class="mb-3">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {% if field.name == "password" %}
+                    <div class="pro-passwrap">
+                      {{ field }}
+                      <button type="button"
+                              class="btn btn-light btn-sm"
+                              data-toggle-pass
+                              title="Show password"
+                              aria-pressed="false">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                      </button>
+                    </div>
+                {% elif field.name == "phone" %}
+                    {{ field|add_class:"intl-phone" }}
+                {% elif field.name in "code,voucher_no,smtcode,staffcode,VCode,empcode"|split:"," and not edit_mode %}
+                    {{ field|add_class:"autocode" }}
+                    <script>setTimeout(()=>{const c=document.getElementById("{{ field.id_for_label }}");if(c){c.readOnly=true;c.placeholder="auto";}},0);</script>
+                {% elif field.name == "photo" and entity|lower == "staff" %}
+                    <div class="d-flex gap-2 align-items-center">
+                      {{ field|add_attr:"accept=image/*"|add_attr:"capture=environment" }}
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-open-camera>Use Camera</button>
+                    </div>
+                {% else %}
+                    {{ field }}
+                {% endif %}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                {% for err in field.errors %}<div class="text-danger small-error">{{ err }}</div>{% endfor %}
+              </div>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+
+        {% if form.joining_date and not form.joining_date.is_hidden and form.joining_date.name not in section_map.values|flatten %}
+          <div class="mb-3">
+            <label for="{{ form.joining_date.id_for_label }}">{{ form.joining_date.label }}</label>
+            {{ form.joining_date }}
+            {% if form.joining_date.help_text %}<div class="form-text">{{ form.joining_date.help_text }}</div>{% endif %}
+            {% for err in form.joining_date.errors %}<div class="text-danger small-error">{{ err }}</div>{% endfor %}
+          </div>
+        {% endif %}
+
+        {% for hidden in form.hidden_fields %}
+          {{ hidden }}
+          {% for err in hidden.errors %}<div class="text-danger small-error">{{ err }}</div>{% endfor %}
+        {% endfor %}
+      </form>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeEntityModal()">Close</button>
+      <button id="modal-save-btn" class="btn btn-primary" onclick="return window._modalSave && window._modalSave();" role="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="form-message-box" role="dialog" aria-modal="true" aria-labelledby="fmb-title">
+  <div class="box">
+    <h5 id="fmb-title">Please fix the highlighted fields</h5>
+    <div class="msg" id="fmb-msg"></div>
+    <div class="actions">
+      <button class="btn btn-primary btn-sm" id="fmb-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="camera-capture-modal" aria-hidden="true">
+  <div class="cam-sheet">
+    <h5 class="mb-2">Capture Photo</h5>
+    <video id="cam-video" autoplay playsinline></video>
+    <canvas id="cam-canvas" style="display:none;"></canvas>
+    <div class="cam-actions">
+      <button class="btn btn-outline-secondary btn-sm" id="cam-close">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="cam-capture">Capture</button>
+    </div>
+  </div>
+</div>
+
+{% if staff_branch_map_json %}
+<script>window.__STAFF_BRANCH_MAP__ = {{ staff_branch_map_json|safe }};</script>
+{% else %}
+<script>window.__STAFF_BRANCH_MAP__ = window.__STAFF_BRANCH_MAP__ || {};</script>
+{% endif %}
+
+<script>
+(function(){
+  const modal = document.getElementById('entity-modal');
+
+  const getForm    = () => modal.querySelector('#entity-form');
+  const getSaveBtn = () => modal.querySelector('#modal-save-btn');
+  const getEntity  = () => (getForm()?.dataset.entity || '').toLowerCase();
+
+  const msgBox = document.getElementById('form-message-box');
+  const msgBoxText = document.getElementById('fmb-msg');
+  const msgBoxOk = document.getElementById('fmb-ok');
+  let focusAfterMessageId = null;
+
+  const verhoeff_d = [
+    [0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],
+    [5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0]
+  ];
+  const verhoeff_p = [
+    [0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],
+    [9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8]
+  ];
+  function isValidAadhaar(num12){
+    if(!/^\d{12}$/.test(num12)) return false;
+    let c=0; const reversed = num12.split('').reverse().map(Number);
+    for(let i=0;i<reversed.length;i++){ c = verhoeff_d[c][verhoeff_p[i%8][reversed[i]]]; }
+    return c===0;
+  }
+  function formatAadhaarPretty(v){
+    const d=(v||'').replace(/\D/g,'').slice(0,12);
+    return d.replace(/(\d{4})(\d{0,4})(\d{0,4}).*/,(_,a,b,c)=>[a,b,c].filter(Boolean).join(' '));
+  }
+
+  function wireSpecialInputs(){
+    const form = getForm();
+    if(!form) return;
+    form.querySelectorAll('input[name="aadhar"], input[name="adharno"]').forEach(inp=>{
+      inp.classList.add('aadhar-input');
+      inp.setAttribute('maxlength','14');
+      inp.setAttribute('inputmode','numeric');
+      inp.setAttribute('pattern','\\d{4}\\s\\d{4}\\s\\d{4}');
+      inp.addEventListener('input', aadhaarInputHandler);
+      inp.addEventListener('blur', aadhaarBlurHandler);
+    });
+    form.querySelectorAll('input[name="phone"], input[name="mobile"], input[name="contact1"], input[name="contactno"], input[name="housecontactno"]').forEach(inp=>{
+      inp.setAttribute('maxlength','10');
+      inp.setAttribute('inputmode','numeric');
+      inp.addEventListener('input', phoneInputHandler);
+      inp.addEventListener('blur', phoneBlurHandler);
+    });
+    const openCamBtn = form.querySelector('[data-open-camera]');
+    if(openCamBtn){ openCamBtn.addEventListener('click', openCameraSheet); }
+  }
+  function aadhaarInputHandler(e){
+    const c=e.target; const prev=c.selectionStart;
+    c.value = formatAadhaarPretty(c.value);
+    try{ c.setSelectionRange(prev, prev); }catch(_){}
+  }
+  function aadhaarBlurHandler(e){
+    const v=e.target.value.replace(/\s/g,'');
+    if(v && !isValidAadhaar(v)){ markInvalid(e.target,'Invalid Aadhaar number.'); }
+  }
+  function phoneInputHandler(e){
+    e.target.value=e.target.value.replace(/\D/g,'').slice(0,10);
+  }
+  function phoneBlurHandler(e){
+    if(e.target.value && !/^\d{10}$/.test(e.target.value)){ markInvalid(e.target,'Phone must be exactly 10 digits.'); }
+  }
+
+  function clearErrors(){
+    const form=getForm(); if(!form) return;
+    form.querySelectorAll('.is-invalid, .has-error').forEach(el=>el.classList.remove('is-invalid','has-error'));
+    form.querySelectorAll('.small-error').forEach(el=>el.remove());
+    const fe=document.getElementById('form-errors'); if(fe) fe.innerHTML='';
+  }
+
+  function markInvalid(inputEl, message){
+    if(!inputEl) return;
+    inputEl.classList.add('is-invalid');
+    const help=document.createElement('div');
+    help.className='text-danger small-error';
+    help.textContent=message||'Invalid value.';
+    const next=inputEl.parentElement?.querySelector('.small-error');
+    if(!next) inputEl.parentElement.appendChild(help);
+  }
+
+  function showMessageBox(htmlMessage, focusId){
+    msgBoxText.innerHTML = htmlMessage || 'Please review the form.';
+    focusAfterMessageId = focusId || null;
+    msgBox.style.display = 'flex';
+    msgBoxOk.focus();
+  }
+
+  msgBoxOk.addEventListener('click', ()=>{
+    msgBox.style.display = 'none';
+    if(focusAfterMessageId){
+      const form=getForm();
+      const el = document.getElementById(focusAfterMessageId) || form?.querySelector('[name="'+focusAfterMessageId+'"]');
+      if(el) el.focus();
+    }
+  });
+
+  function hideStatusAndDefault(){
+    const form=getForm(); if(!form) return;
+    ['status','is_active','active'].forEach(name=>{
+      const el = form.querySelector(`[name="${name}"]`);
+      if(!el) return;
+      if(name==='status'){
+        if(el.tagName==='SELECT'){
+          const opt=Array.from(el.options).find(o=>/^(active|1|true)$/i.test(String(o.value)));
+          if(opt) el.value=opt.value;
+        } else { el.value='active'; }
+      } else {
+        if(el.type==='checkbox'){ el.checked=true; } else { el.value='1'; }
+      }
+      const wrap = el.closest('.mb-3, .col-md-6, .form-group') || el.parentElement;
+      if(wrap) wrap.style.display='none';
+    });
+  }
+
+  function wireStaffToBranch(){
+    const form=getForm(); if(!form) return;
+    const staffSel   = form.querySelector('select[name="staff"]');
+    const branchCtrl = form.querySelector('[name="branch"], select[name="branch"]');
+    if(!staffSel || !branchCtrl) return;
+
+    const MAP = window.__STAFF_BRANCH_MAP__ || {};
+
+    function applyFromOption(){
+      const sid = staffSel.value;
+      const info = MAP && (MAP[sid] || MAP[String(sid)]);
+      if(!info) return;
+
+      if(branchCtrl.tagName==='SELECT'){
+        const val = (info.branch_id!=null) ? String(info.branch_id) : '';
+        if(val && branchCtrl.querySelector(`option[value="${CSS.escape ? CSS.escape(val) : val}"]`)){
+          branchCtrl.value = val;
+        }
+      } else {
+        branchCtrl.value = info.branch_name || info.branch_id || branchCtrl.value;
+      }
+    }
+
+    staffSel.addEventListener('change', applyFromOption);
+    const wrap = branchCtrl.closest('.mb-3, .col-md-6, .form-group');
+    if(wrap) wrap.style.display='none';
+    applyFromOption();
+  }
+
+  function validateFormLocal(){
+    const form=getForm(); const saveBtn=getSaveBtn();
+    if(!form || !saveBtn){ return {ok:true, firstBad:null}; }
+    let ok=true, firstBad=null;
+
+    const fields=form.querySelectorAll('input, select, textarea');
+    fields.forEach(el=>{
+      if(el.type==='hidden' || el.offsetParent===null) return;
+
+      if((el.type==='radio' || el.type==='checkbox') && el.required){
+        const group = form.querySelectorAll(`[name="${el.name}"]`);
+        const anyChecked = Array.from(group).some(i=>i.checked);
+        if(!anyChecked){ ok=false; if(!firstBad) firstBad=el; }
+        return;
+      }
+
+      const v = (el.value ?? '').toString();
+      const isEmpty = v.trim()==='';
+
+      if((el.required && isEmpty)){
+        ok=false; if(!firstBad) firstBad=el;
+      }
+
+      if(typeof el.checkValidity==='function' && !el.checkValidity()){
+        ok=false; if(!firstBad) firstBad=el;
+      }
+
+      if(el.classList.contains('aadhar-input')){
+        const digits=el.value.replace(/\s/g,'');
+        if(digits && (!/^\d{12}$/.test(digits) || !isValidAadhaar(digits))){
+          ok=false; if(!firstBad) firstBad=el;
+        }
+      }
+
+      if(['phone','mobile','contact1','contactno','housecontactno'].includes(el.name)){
+        if(el.value && !/^\d{10}$/.test(el.value)){
+          ok=false; if(!firstBad) firstBad=el;
+        }
+      }
+    });
+
+    // do not hard-disable; allow submit to show message box
+    saveBtn.dataset.canSave = ok ? "1" : "0";
+    return {ok, firstBad};
+  }
+
+  modal.addEventListener('input', (e)=>{
+    if(e.target.closest('#entity-form')) validateFormLocal();
+  });
+  modal.addEventListener('change', (e)=>{
+    if(e.target.closest('#entity-form')) validateFormLocal();
+  });
+  modal.addEventListener('keydown', (e)=>{
+    if(!e.target.closest('#entity-form')) return;
+    if(e.key === 'Enter' && e.target.tagName !== 'TEXTAREA'){
+      e.preventDefault();
+      submitEntityForm();
+    }
+  });
+
+  function getCSRFToken(){
+    const form=getForm();
+    return form?.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+  }
+
+  async function postWithFallback(fd, patterns){
+    const headers={
+      'X-Requested-With':'XMLHttpRequest',
+      'X-CSRFToken': getCSRFToken(),
+      'Accept':'application/json'
+    };
+    for(const u of patterns){
+      try{
+        const resp = await fetch(u,{method:'POST',headers,body:fd,credentials:'same-origin'});
+
+        if(resp.status===401){
+          showMessageBox('Authentication required. Redirecting to login…', null);
+          try{ window.location.href = '/login/?next=' + encodeURIComponent(window.location.pathname + window.location.search); }catch(_){}
+          return {resp,data:{success:false,error:'auth'},url:u};
+        }
+        if(resp.redirected){ window.location.href=resp.url; return null; }
+
+        const ct=resp.headers.get('content-type')||'';
+        if(!ct.includes('application/json')){
+          const text=await resp.text();
+          if(resp.status===404) continue;
+          return {resp,data:{success:false,error:(text||'Non-JSON response').slice(0,500)},url=u};
+        }
+        const data=await resp.json();
+        return {resp,data,url:u};
+      }catch(_e){ /* try next */ }
+    }
+    return null;
+  }
+
+  async function submitEntityForm(){
+    clearErrors();
+    const { ok, firstBad } = validateFormLocal();
+    if(!ok){
+      showMessageBox('Some fields are incomplete or invalid. Please correct the highlighted inputs.', firstBad ? (firstBad.id || firstBad.name) : null);
+      return;
+    }
+
+    const form=getForm(); const saveBtn=getSaveBtn(); if(!form || !saveBtn) return;
+
+    const entity = getEntity();
+    const objectId = form.querySelector('input[name="object_id"]')?.value;
+
+    const patterns = objectId
+      ? [`/${entity}/update/${objectId}/`, `/entities/${entity}/${objectId}/update/`, `/${entity}/update/${objectId}`]
+      : [`/${entity}/create/`, `/entities/${entity}/create/`, `/${entity}/create`];
+
+    saveBtn.disabled = true; saveBtn.innerText = 'Saving...';
+
+    try{
+      const fd = new FormData(form);
+      const result = await postWithFallback(fd, patterns);
+
+      if(result && result.data && result.data.success){
+        closeEntityModal(true);
+        return;
+      }
+
+      let errorHtml = '';
+      let firstErrName = null;
+      const data = result ? result.data : null;
+
+      if(data && data.errors){
+        Object.entries(data.errors).forEach(([name, msgs])=>{
+          if(name==='__all__'){ errorHtml += `<div>${Array.isArray(msgs)? msgs.join('<br>') : msgs}</div>`; return; }
+          const field = form.querySelector(`[name="${name}"]`) || form.querySelector(`#id_${name}`);
+          const message = (Array.isArray(msgs) ? msgs[0] : msgs) || 'Invalid value.';
+          if(field){ markInvalid(field, message); if(!firstErrName) firstErrName = field.id || field.name; }
+          errorHtml += `<div><strong>${name}</strong>: ${message}</div>`;
+        });
+      }else if(data && data.error){
+        errorHtml = String(data.error);
+      }else{
+        errorHtml = 'Form endpoint not found or no JSON response. Check URL patterns and session.';
+      }
+
+      showMessageBox(errorHtml, firstErrName);
+      saveBtn.disabled = false; saveBtn.innerText = 'Save';
+    }catch(err){
+      showMessageBox('Unexpected error: ' + (err?.message || err), null);
+      const s=getSaveBtn(); if(s){ s.disabled=false; s.innerText='Save'; }
+    }
+  }
+
+  window._modalSave = function(){
+    submitEntityForm();
+    return false;
+  };
+
+  modal.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-toggle-pass]');
+    if(btn){
+      const wrap = btn.closest('.pro-passwrap');
+      const inp = wrap ? wrap.querySelector('input[type="password"], input[type="text"]') : null;
+      if(inp){
+        if(inp.type==='password'){ inp.type='text'; btn.setAttribute('aria-pressed','true'); btn.title='Hide password'; }
+        else { inp.type='password'; btn.setAttribute('aria-pressed','false'); btn.title='Show password'; }
+        inp.focus();
+      }
+    }
+  });
+
+  let mediaStream = null;
+  const camModal = document.getElementById('camera-capture-modal');
+  const camVideo = document.getElementById('cam-video');
+  const camCanvas = document.getElementById('cam-canvas');
+  const camBtnClose = document.getElementById('cam-close');
+  const camBtnCapture = document.getElementById('cam-capture');
+  let targetFileInput = null;
+
+  async function openCameraSheet(){
+    const form=getForm();
+    try{
+      targetFileInput = form?.querySelector('input[type="file"][name="photo"]');
+      if(!targetFileInput){ return; }
+      mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio:false });
+      camVideo.srcObject = mediaStream;
+      camModal.style.display = 'block';
+    }catch(err){
+      showMessageBox('Unable to access camera. Please allow camera permission or use file upload.', null);
+    }
+  }
+  function closeCameraSheet(){
+    camModal.style.display = 'none';
+    if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream = null; }
+  }
+  async function captureFrameToInput(){
+    if(!targetFileInput || !camVideo.videoWidth){ return; }
+    camCanvas.width = camVideo.videoWidth; camCanvas.height = camVideo.videoHeight;
+    const ctx = camCanvas.getContext('2d'); ctx.drawImage(camVideo, 0, 0);
+    const blob = await new Promise(res => camCanvas.toBlob(res, 'image/jpeg', .92));
+    const file = new File([blob], `staff_photo_${Date.now()}.jpg`, { type:'image/jpeg' });
+    const dt = new DataTransfer(); dt.items.add(file); targetFileInput.files = dt.files;
+    closeCameraSheet();
+  }
+  camBtnClose.addEventListener('click', closeCameraSheet);
+  camBtnCapture.addEventListener('click', captureFrameToInput);
+
+  function onModalShown(){
+    wireSpecialInputs();
+    hideStatusAndDefault();
+    wireStaffToBranch();
+    const form=getForm();
+    const first = form?.querySelector('input:not([type=hidden]):not([readonly]), select, textarea');
+    if(first) first.focus();
+    // Ensure Save starts enabled; validation runs on submit
+    const s=getSaveBtn(); if(s) s.disabled=false;
+  }
+
+  const _origOpen = window.openEntityModal;
+  window.openEntityModal = function(e){ if(typeof _origOpen==='function') _origOpen(e); setTimeout(onModalShown,0); }
+  const _origEdit = window.editEntity;
+  window.editEntity = function(e, pk){ if(typeof _origEdit==='function') _origEdit(e, pk); setTimeout(onModalShown,0); }
+
+  if(getComputedStyle(modal).display !== 'none'){ onModalShown(); }
+})();
+</script>

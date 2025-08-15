@@ -1,0 +1,22 @@
+{% extends "dashboard.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>NPA Dashboard</h2>
+  {% if not enabled %}
+    <div class="alert alert-warning mt-3">NPA dashboard feature is OFF.</div>
+  {% else %}
+    <div class="row mt-3">
+      {% for label, val in buckets.items %}
+        <div class="col-md-2">
+          <div class="card text-center">
+            <div class="card-body">
+              <div class="h6 mb-1">{{ label }}</div>
+              <div class="display-6">{{ val }}</div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

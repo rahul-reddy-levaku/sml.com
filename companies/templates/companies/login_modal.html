@@ -1,0 +1,254 @@
+<!-- Login Modal -->
+<div id="login-modal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+  <div class="modal-content pro-login">
+    <button type="button" class="close-btn" onclick="closeLoginModal()" title="Close" aria-label="Close">&times;</button>
+
+    <!-- Professional key icon -->
+    <span class="login-key-icon" aria-hidden="true" title="Secure login">🔑</span>
+
+    <h2 id="loginTitle"><span class="brand">SPOORTHI MACS LTD.,</span> <span class="thin">Login</span></h2>
+    <p class="subnote">Secure sign-in</p>
+
+    <div id="login-error" class="pro-login-error" role="alert" hidden></div>
+
+    <!-- Turn off form-level autocomplete to discourage silent fills -->
+    <form id="admin-login-form" method="POST" action="{% url 'login' %}" autocomplete="off" novalidate>
+      {% csrf_token %}
+
+      <!-- Decoys to satisfy browser autofill -->
+      <input type="text" style="position:absolute;left:-9999px;width:1px;height:1px;" autocomplete="username" tabindex="-1" aria-hidden="true">
+      <input type="password" style="position:absolute;left:-9999px;width:1px;height:1px;" autocomplete="current-password" tabindex="-1" aria-hidden="true">
+
+      <!-- Username + Password same line -->
+      <div class="pro-row-inline">
+        <div class="pro-field">
+          <label for="login-username">Username</label>
+          <input id="login-username"
+                 name="username"
+                 type="text"
+                 class="form-control"
+                 autocomplete="off"
+                 autocapitalize="off"
+                 spellcheck="false"
+                 required
+                 placeholder="yourname"
+                 readonly />
+        </div>
+
+        <div class="pro-field">
+          <label for="login-password">Password</label>
+          <div class="pro-passwrap">
+            <input id="login-password"
+                   name="password"
+                   type="password"
+                   class="form-control"
+                   autocomplete="new-password"
+                   required
+                   placeholder="••••••••"
+                   readonly />
+            <!-- Eye icon toggle (no text) -->
+            <button type="button"
+                    class="pro-toggle-pass"
+                    data-toggle-pass
+                    aria-label="Show password"
+                    title="Show password"
+                    onclick="return togglePass(this)">
+              <!-- default: eye (closed) -->
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="caps-warning" class="pro-hint" hidden>Caps Lock is ON</div>
+
+      <!-- OTP block (hidden unless needed) -->
+      <div id="otp-block" class="pro-otp" hidden>
+        <label for="login-otp">One-Time Password</label>
+        <input id="login-otp" name="otp" type="text" class="form-control" inputmode="numeric" pattern="\d{4,8}" autocomplete="one-time-code" placeholder="Enter OTP" />
+      </div>
+
+      <div class="pro-row">
+        <label class="remember"><input type="checkbox" id="remember-me" name="remember" /> Keep me signed in on this device</label>
+        <a href="#" id="forgot-link" class="pro-link">Forgot password?</a>
+      </div>
+
+      <!-- Actions: Sign in FIRST, then Close -->
+      <div class="pro-actions">
+        <button type="submit" id="login-submit" class="btn btn-primary pro-submit" disabled>
+          <span class="btn-text">Sign in</span>
+          <span class="btn-spinner" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeLoginModal()">Close</button>
+      </div>
+
+      <div class="pro-meta"><small>Protected by enterprise security. Unauthorised access prohibited.</small></div>
+    </form>
+  </div>
+</div>
+
+<!-- Inline tweaks for centering label + key icon -->
+<style>
+  .pro-submit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 140px;
+  }
+  .login-key-icon {
+    position: absolute;
+    right: 48px; /* space from the close X */
+    top: 12px;
+    font-size: 18px;
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  /* Make the eye button look clean */
+  .pro-toggle-pass {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid #cfd6df;
+    background: #f3f6fa;
+  }
+  .pro-toggle-pass svg { display:block; }
+</style>
+
+<script>
+  /* Fallback so script.js can always show the inline error, even if the server
+     returns HTML or a redirect. If a global showInlineLoginError already exists,
+     this won't overwrite it. */
+  window.showInlineLoginError = window.showInlineLoginError || function (msg) {
+    var el = document.getElementById('login-error');
+    if (!el) return;
+    el.textContent = msg || 'Invalid credentials.';
+    el.hidden = false;              // remove [hidden]
+    el.style.display = 'block';     // defeat any CSS hiding
+    el.setAttribute('role','alert');
+    el.setAttribute('aria-live','assertive');
+  };
+
+  (function () {
+    if (window._loginEnhanceSetup) return;
+    window._loginEnhanceSetup = true;
+
+    function byId(id){ return document.getElementById(id); }
+    var u = byId('login-username');
+    var p = byId('login-password');
+    var err = byId('login-error');
+    var submitBtn = byId('login-submit');
+
+    function unlockOnIntent(el) {
+      if (!el) return;
+      var unlock = function(){ el.removeAttribute('readonly'); };
+      ['focus','keydown','pointerdown'].forEach(function (ev) {
+        el.addEventListener(ev, function handler(){
+          unlock();
+          el.removeEventListener(ev, handler);
+        }, { once:true });
+      });
+    }
+
+    function hideError(){
+      if (!err) return;
+      err.hidden = true;
+      err.style.display = '';
+      err.textContent = '';
+    }
+
+    function clearFields(){
+      if (u) u.value = '';
+      if (p) p.value = '';
+    }
+
+    function setSubmitEnabled(on){
+      if (!submitBtn) return;
+      if (on) submitBtn.removeAttribute('disabled');
+      else    submitBtn.setAttribute('disabled','disabled');
+    }
+
+    function updateSubmitState(){
+      var ok = (u && u.value.trim().length>0) && (p && p.value.trim().length>0);
+      setSubmitEnabled(ok);
+    }
+
+    // enable only when both fields have > 0 chars; hide error while typing
+    if (u) u.addEventListener('input', function(){ updateSubmitState(); hideError(); });
+    if (p) p.addEventListener('input', function(){ updateSubmitState(); hideError(); });
+
+    // initial readonly unlock on intent
+    unlockOnIntent(u);
+    unlockOnIntent(p);
+
+    // Wrap existing open/close so we reset to fresh state every time
+    (function wrapOpenClose(){
+      var _open  = window.openLoginModal;
+      var _close = window.closeLoginModal;
+
+      window.openLoginModal = function(){
+        // fresh state before delegating
+        hideError();
+        clearFields();
+        setSubmitEnabled(false);
+        if (u) u.setAttribute('readonly','readonly');
+        if (p) p.setAttribute('readonly','readonly');
+        unlockOnIntent(u);
+        unlockOnIntent(p);
+
+        if (typeof _open === 'function') _open();
+        setTimeout(function(){ if (u) u.focus(); }, 0);
+      };
+
+      window.closeLoginModal = function(){
+        if (typeof _close === 'function') _close();
+        // ensure next open is clean
+        hideError();
+        clearFields();
+        setSubmitEnabled(false);
+        if (u) u.setAttribute('readonly','readonly');
+        if (p) p.setAttribute('readonly','readonly');
+        unlockOnIntent(u);
+        unlockOnIntent(p);
+      };
+    })();
+
+    // Initial state
+    hideError();
+    setSubmitEnabled(false);
+  })();
+
+  // Eye / Eye-off icon SVGs
+  function _eyeSVG(){ return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>'; }
+  function _eyeOffSVG(){ return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.58 10.58a2 2 0 1 0 2.83 2.83"></path><path d="M16.24 16.24C14.83 17.39 13.05 18 12 18 5 18 1 12 1 12a22.82 22.82 0 0 1 6.62-5.79"></path><path d="M14.12 5.1C14.74 5.03 15.38 5 16 5c7 0 11 7 11 7a22.82 22.82 0 0 1-3.24 4.12"></path></svg>'; }
+
+  // Password toggle (icon-only; no "Hide" text)
+  window.togglePass = function (btn) {
+    try {
+      var wrap = btn.closest('.pro-passwrap');
+      if (!wrap) return false;
+      var input = wrap.querySelector('input[type="password"], input[type="text"]');
+      if (!input) return false;
+
+      var next = input.type === 'password' ? 'text' : 'password';
+      input.type = next;
+
+      var showing = next === 'text';
+      btn.setAttribute('aria-pressed', showing ? 'true' : 'false');
+      btn.setAttribute('title', showing ? 'Hide password' : 'Show password');
+      btn.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+      btn.innerHTML = showing ? _eyeOffSVG() : _eyeSVG();
+
+      input.focus();
+    } catch (e) {
+      console.error('togglePass error:', e);
+    }
+    return false;
+  };
+</script>

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% load custom_tags %}
+
+{% block title %}Dashboard - Spoorthi MACS Ltd.,{% endblock %}
+
+{% block content %}
+<div class="dashboard-flex">
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    {% with p=profile %}
+    <ul class="sidebar-menu">
+
+      {# ───────── CREATE (only Admin/SU/Master) ───────── #}
+      {% if user.is_superuser or p.is_admin or p.is_master %}
+        <li class="dropdown">
+          <a href="#">Create ▸</a>
+          <ul class="dropdown-menu">
+            {% for model in "Company,Branch,UserProfile,UserPermission,Village,Center,Group,Cadre,Column"|split:"," %}
+              <li><a href="{% url 'entity_list' model %}">{{ model|pretty_name }}</a></li>
+            {% endfor %}
+          </ul>
+        </li>
+      {% endif %}
+
+      {# ───────── HRPM DROPDOWN (Admin/SU/Master/Manager) ───────── #}
+      {% if user.is_superuser or p.is_admin or p.is_master or p.is_manager %}
+        <li class="dropdown">
+          <a href="#">HRPM ▸</a>
+          <ul class="dropdown-menu">
+            <li><a href="{% url 'hrpm_staff' %}">{{ "Staff"|pretty_name }}</a></li>
+            <li><a href="{% url 'hrpm_appointment' %}">{{ "Appointment"|pretty_name }}</a></li>
+            <li><a href="{% url 'hrpm_salary_statement' %}">{{ "Salary Statement"|pretty_name }}</a></li>
+          </ul>
+        </li>
+      {% endif %}
+
+      {# ───────── MAIN NAV LISTS ───────── #}
+      {% if user.is_superuser or p.is_admin %}
+        {# Full list for Admin/Superuser #}
+        {% for model in "Role,Product,Client,LoanApplication,LoanApproval,Disbursement,BusinessSetting,FieldSchedule,FieldReport,AccountHead,Voucher,Posting,RecoveryPosting"|split:"," %}
+          <li><a href="{% url 'entity_list' model %}">{{ model|pretty_name }}</a></li>
+        {% endfor %}
+      {% else %}
+        {# Union of role-specific lists (no elif → all applicable show) #}
+
+        {# Data Entry list #}
+        {% if p.is_data_entry %}
+          {% for model in "Client,LoanApplication,RecoveryPosting"|split:"," %}
+            <li><a href="{% url 'entity_list' model %}">{{ model|pretty_name }}</a></li>
+          {% endfor %}
+        {% endif %}
+
+        {# Accounting list #}
+        {% if p.is_accounting %}
+          {% for model in "Voucher,Posting,AccountHead"|split:"," %}
+            <li><a href="{% url 'entity_list' model %}">{{ model|pretty_name }}</a></li>
+          {% endfor %}
+        {% endif %}
+
+        {# ───────── NEW ROLES (additive, preserves existing behaviour) ───────── #}
+
+        {# Manager: union of DE + ACC menus #}
+        {% if p.is_manager %}
+          {% for model in "Client,LoanApplication,RecoveryPosting,Voucher,Posting,AccountHead"|split:"," %}
+            <li><a href="{% url 'entity_list' model %}">{{ model|pretty_name }}</a></li>
+          {% endfor %}
+        {% endif %}
+
+        {# Recovery Agent: RecoveryPosting only #}
+        {% if p.is_recovery_agent %}
+          <li><a href="{% url 'entity_list' 'RecoveryPosting' %}">{{ "RecoveryPosting"|pretty_name }}</a></li>
+        {% endif %}
+
+        {# Reports list (FieldReport item) #}
+        {% if p.is_reports or p.is_auditor %}
+          <li><a href="{% url 'entity_list' 'FieldReport' %}">{{ "FieldReport"|pretty_name }}</a></li>
+        {% endif %}
+      {% endif %}
+
+      {# ───────── REPORTS DROPDOWN (Admin/SU, Reports role, Auditor) ───────── #}
+      {% if user.is_superuser or p.is_admin or p.is_reports or p.is_auditor %}
+        <li class="dropdown">
+          <a href="#">Report ▸</a>
+          <ul class="dropdown-menu">
+            <li><a href="{% url 'entity_list' 'WeeklyReport' %}">Weekly</a></li>
+            <li><a href="{% url 'entity_list' 'MonthlyReport' %}">Monthly</a></li>
+          </ul>
+        </li>
+      {% endif %}
+
+      {# ───────── FEATURE LINKS (flag-driven; additive, non-breaking) ───────── #}
+      {% if SML_FEATURES.NPA_DASHBOARD %}
+        <li><a href="{% url 'npa_dashboard' %}">NPA Dashboard</a></li>
+      {% endif %}
+
+      {% if SML_FEATURES.CREDIT_BUREAU %}
+        <li><a href="#" onclick="openCreditPullModal()">Credit Bureau Check</a></li>
+      {% endif %}
+
+      {% if SML_FEATURES.OFFLINE_KYC %}
+        <li><a href="{% url 'entity_list' 'KYCDocument' %}">{{ "KYCDocument"|pretty_name }}</a></li>
+      {% endif %}
+
+      {# FIX: no parentheses; Django if doesn't support them. Precedence: user.is_superuser or (p.is_admin and flag) #}
+      {% if user.is_superuser or p.is_admin and SML_FEATURES.ESCALATION_ALERTS %}
+        <li><a href="{% url 'entity_list' 'AlertRule' %}">{{ "AlertRule"|pretty_name }}</a></li>
+      {% endif %}
+
+    </ul>
+    {% endwith %}
+  </div>
+
+  <!-- Main Content + Toggle Button Container -->
+  <div class="admin-main-content">
+    <!-- User meta block -->
+    <div class="user-meta-header d-flex justify-content-end align-items-center p-2" style="font-size: 14px; color: #666;">
+      {% if header_user_display_name or header_branch_name or header_role_label %}
+        <strong>{{ header_user_display_name }}</strong>
+        {% if header_branch_name %} | <span>{{ header_branch_name }}</span>{% endif %}
+        {% if header_role_label %} | <span>{{ header_role_label }}</span>{% endif %}
+      {% endif %}
+    </div>
+
+    <!-- Sidebar Toggle Button -->
+    <button id="sidebar-toggle" class="sidebar-toggle-btn" title="Toggle Sidebar">&#9776;</button>
+
+    {% if include_template %}
+      {% include include_template %}
+    {% else %}
+      <div class="p-4">
+        <h1>Welcome</h1>
+        <p>Select an option from the sidebar to manage the system.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Universal Image Preview Modal -->
+<div id="image-preview-modal" class="modal" style="display: none;">
+  <div class="modal-content image-modal">
+    <div class="modal-header d-flex justify-content-between align-items-center mb-2">
+      <h5 class="modal-title">Image Preview</h5>
+      <button type="button" class="close-btn" onclick="closeImageModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <img id="image-preview" src="" alt="Preview" style="max-width: 100%; max-height: 400px; display: block; margin: 0 auto 20px;" />
+      <div id="image-meta-fields"></div>
+      <div class="d-flex justify-content-end mt-3">
+        <button class="btn btn-secondary" onclick="closeImageModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
