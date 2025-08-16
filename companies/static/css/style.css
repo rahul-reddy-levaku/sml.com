@@ -343,6 +343,7 @@ body {
     flex-direction: column;
   }
 }
+
 /* ==== FINAL LOGIN TOGGLE FIX (non-destructive overrides) ==== */
 .pro-passwrap {
   display: flex !important;
@@ -373,4 +374,24 @@ body {
 #login-modal,
 #login-modal .modal-content {
   pointer-events: auto;
+}
+
+/* ===== EYE ICON DEDUPE GUARD (CSS-only visibility control) ===== */
+/* Hide any eye toggles globally unless they live inside the intended wrapper */
+button[data-toggle-pass],
+.eye-icon {
+  display: none !important;
+}
+.pro-passwrap button[data-toggle-pass],
+.pro-passwrap .eye-icon {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Make sure inline SVG eyes align neatly */
+.pro-passwrap .eye-icon svg {
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
 }

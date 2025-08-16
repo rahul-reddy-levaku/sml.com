@@ -44,6 +44,11 @@
     padding: 6px 8px; line-height: 1;
   }
 
+  /* hard-kill any legacy/external eye toggles outside our wrapper */
+  #entity-modal .toggle-password,
+  #entity-modal .password-eye,
+  #entity-modal .show-pass { display:none !important; }
+
   .is-invalid,
   .has-error input,
   .has-error select,
@@ -128,7 +133,7 @@
                           {{ field|add_class:"intl-phone" }}
                       {% elif field.name in "code,voucher_no,smtcode,staffcode,VCode,empcode"|split:"," and not edit_mode %}
                           {{ field|add_class:"autocode" }}
-                          <script>setTimeout(()=>{const c=document.getElementById("{{ field.id_for_label }}");if(c){c.readOnly=true;c.placeholder="auto";}},0);</script>
+                          <script>setTimeout(function(){var c=document.getElementById("{{ field.id_for_label }}");if(c){c.readOnly=true;c.placeholder="auto";}},0);</script>
                       {% elif field.name == "photo" and entity|lower == "staff" %}
                           <div class="d-flex gap-2 align-items-center">
                             {{ field|add_attr:"accept=image/*"|add_attr:"capture=environment" }}
@@ -167,7 +172,7 @@
                     {{ field|add_class:"intl-phone" }}
                 {% elif field.name in "code,voucher_no,smtcode,staffcode,VCode,empcode"|split:"," and not edit_mode %}
                     {{ field|add_class:"autocode" }}
-                    <script>setTimeout(()=>{const c=document.getElementById("{{ field.id_for_label }}");if(c){c.readOnly=true;c.placeholder="auto";}},0);</script>
+                    <script>setTimeout(function(){var c=document.getElementById("{{ field.id_for_label }}");if(c){c.readOnly=true;c.placeholder="auto";}},0);</script>
                 {% elif field.name == "photo" and entity|lower == "staff" %}
                     <div class="d-flex gap-2 align-items-center">
                       {{ field|add_attr:"accept=image/*"|add_attr:"capture=environment" }}
@@ -236,40 +241,40 @@
 
 <script>
 (function(){
-  const modal = document.getElementById('entity-modal');
+  var modal = document.getElementById('entity-modal');
 
-  const getForm    = () => modal.querySelector('#entity-form');
-  const getSaveBtn = () => modal.querySelector('#modal-save-btn');
-  const getEntity  = () => (getForm()?.dataset.entity || '').toLowerCase();
+  function getForm(){ return modal.querySelector('#entity-form'); }
+  function getSaveBtn(){ return modal.querySelector('#modal-save-btn'); }
+  function getEntity(){ var f=getForm(); return (f && f.dataset.entity ? f.dataset.entity : '').toLowerCase(); }
 
-  const msgBox = document.getElementById('form-message-box');
-  const msgBoxText = document.getElementById('fmb-msg');
-  const msgBoxOk = document.getElementById('fmb-ok');
-  let focusAfterMessageId = null;
+  var msgBox = document.getElementById('form-message-box');
+  var msgBoxText = document.getElementById('fmb-msg');
+  var msgBoxOk = document.getElementById('fmb-ok');
+  var focusAfterMessageId = null;
 
-  const verhoeff_d = [
+  var verhoeff_d = [
     [0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],
     [5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0]
   ];
-  const verhoeff_p = [
+  var verhoeff_p = [
     [0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],
     [9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8]
   ];
   function isValidAadhaar(num12){
     if(!/^\d{12}$/.test(num12)) return false;
-    let c=0; const reversed = num12.split('').reverse().map(Number);
-    for(let i=0;i<reversed.length;i++){ c = verhoeff_d[c][verhoeff_p[i%8][reversed[i]]]; }
+    var c=0; var reversed = num12.split('').reverse().map(Number);
+    for(var i=0;i<reversed.length;i++){ c = verhoeff_d[c][verhoeff_p[i%8][reversed[i]]]; }
     return c===0;
   }
   function formatAadhaarPretty(v){
-    const d=(v||'').replace(/\D/g,'').slice(0,12);
-    return d.replace(/(\d{4})(\d{0,4})(\d{0,4}).*/,(_,a,b,c)=>[a,b,c].filter(Boolean).join(' '));
+    var d=(v||'').replace(/\D/g,'').slice(0,12);
+    return d.replace(/(\d{4})(\d{0,4})(\d{0,4}).*/,function(_,a,b,c){return [a,b,c].filter(Boolean).join(' ');});
   }
 
   function wireSpecialInputs(){
-    const form = getForm();
+    var form = getForm();
     if(!form) return;
-    form.querySelectorAll('input[name="aadhar"], input[name="adharno"]').forEach(inp=>{
+    form.querySelectorAll('input[name="aadhar"], input[name="adharno"]').forEach(function(inp){
       inp.classList.add('aadhar-input');
       inp.setAttribute('maxlength','14');
       inp.setAttribute('inputmode','numeric');
@@ -277,22 +282,22 @@
       inp.addEventListener('input', aadhaarInputHandler);
       inp.addEventListener('blur', aadhaarBlurHandler);
     });
-    form.querySelectorAll('input[name="phone"], input[name="mobile"], input[name="contact1"], input[name="contactno"], input[name="housecontactno"]').forEach(inp=>{
+    form.querySelectorAll('input[name="phone"], input[name="mobile"], input[name="contact1"], input[name="contactno"], input[name="housecontactno"]').forEach(function(inp){
       inp.setAttribute('maxlength','10');
       inp.setAttribute('inputmode','numeric');
       inp.addEventListener('input', phoneInputHandler);
       inp.addEventListener('blur', phoneBlurHandler);
     });
-    const openCamBtn = form.querySelector('[data-open-camera]');
+    var openCamBtn = form.querySelector('[data-open-camera]');
     if(openCamBtn){ openCamBtn.addEventListener('click', openCameraSheet); }
   }
   function aadhaarInputHandler(e){
-    const c=e.target; const prev=c.selectionStart;
+    var c=e.target; var prev=c.selectionStart;
     c.value = formatAadhaarPretty(c.value);
     try{ c.setSelectionRange(prev, prev); }catch(_){}
   }
   function aadhaarBlurHandler(e){
-    const v=e.target.value.replace(/\s/g,'');
+    var v=e.target.value.replace(/\s/g,'');
     if(v && !isValidAadhaar(v)){ markInvalid(e.target,'Invalid Aadhaar number.'); }
   }
   function phoneInputHandler(e){
@@ -303,19 +308,19 @@
   }
 
   function clearErrors(){
-    const form=getForm(); if(!form) return;
-    form.querySelectorAll('.is-invalid, .has-error').forEach(el=>el.classList.remove('is-invalid','has-error'));
-    form.querySelectorAll('.small-error').forEach(el=>el.remove());
-    const fe=document.getElementById('form-errors'); if(fe) fe.innerHTML='';
+    var form=getForm(); if(!form) return;
+    form.querySelectorAll('.is-invalid, .has-error').forEach(function(el){ el.classList.remove('is-invalid','has-error'); });
+    form.querySelectorAll('.small-error').forEach(function(el){ el.remove(); });
+    var fe=document.getElementById('form-errors'); if(fe) fe.innerHTML='';
   }
 
   function markInvalid(inputEl, message){
     if(!inputEl) return;
     inputEl.classList.add('is-invalid');
-    const help=document.createElement('div');
+    var help=document.createElement('div');
     help.className='text-danger small-error';
     help.textContent=message||'Invalid value.';
-    const next=inputEl.parentElement?.querySelector('.small-error');
+    var next=(inputEl.parentElement && inputEl.parentElement.querySelector('.small-error')) || null;
     if(!next) inputEl.parentElement.appendChild(help);
   }
 
@@ -326,49 +331,49 @@
     msgBoxOk.focus();
   }
 
-  msgBoxOk.addEventListener('click', ()=>{
+  msgBoxOk.addEventListener('click', function(){
     msgBox.style.display = 'none';
     if(focusAfterMessageId){
-      const form=getForm();
-      const el = document.getElementById(focusAfterMessageId) || form?.querySelector('[name="'+focusAfterMessageId+'"]');
+      var form=getForm();
+      var el = document.getElementById(focusAfterMessageId) || (form && form.querySelector('[name="'+focusAfterMessageId+'"]'));
       if(el) el.focus();
     }
   });
 
   function hideStatusAndDefault(){
-    const form=getForm(); if(!form) return;
-    ['status','is_active','active'].forEach(name=>{
-      const el = form.querySelector(`[name="${name}"]`);
+    var form=getForm(); if(!form) return;
+    ['status','is_active','active'].forEach(function(name){
+      var el = form.querySelector('[name="'+name+'"]');
       if(!el) return;
       if(name==='status'){
         if(el.tagName==='SELECT'){
-          const opt=Array.from(el.options).find(o=>/^(active|1|true)$/i.test(String(o.value)));
+          var opt=Array.from(el.options).find(function(o){return /^(active|1|true)$/i.test(String(o.value));});
           if(opt) el.value=opt.value;
         } else { el.value='active'; }
       } else {
         if(el.type==='checkbox'){ el.checked=true; } else { el.value='1'; }
       }
-      const wrap = el.closest('.mb-3, .col-md-6, .form-group') || el.parentElement;
+      var wrap = el.closest('.mb-3, .col-md-6, .form-group') || el.parentElement;
       if(wrap) wrap.style.display='none';
     });
   }
 
   function wireStaffToBranch(){
-    const form=getForm(); if(!form) return;
-    const staffSel   = form.querySelector('select[name="staff"]');
-    const branchCtrl = form.querySelector('[name="branch"], select[name="branch"]');
+    var form=getForm(); if(!form) return;
+    var staffSel   = form.querySelector('select[name="staff"]');
+    var branchCtrl = form.querySelector('[name="branch"], select[name="branch"]');
     if(!staffSel || !branchCtrl) return;
 
-    const MAP = window.__STAFF_BRANCH_MAP__ || {};
+    var MAP = window.__STAFF_BRANCH_MAP__ || {};
 
     function applyFromOption(){
-      const sid = staffSel.value;
-      const info = MAP && (MAP[sid] || MAP[String(sid)]);
+      var sid = staffSel.value;
+      var info = MAP && (MAP[sid] || MAP[String(sid)]);
       if(!info) return;
 
       if(branchCtrl.tagName==='SELECT'){
-        const val = (info.branch_id!=null) ? String(info.branch_id) : '';
-        if(val && branchCtrl.querySelector(`option[value="${CSS.escape ? CSS.escape(val) : val}"]`)){
+        var val = (info.branch_id!=null) ? String(info.branch_id) : '';
+        if(val && branchCtrl.querySelector('option[value="'+val.replace(/"/g,'\\"')+'"]')){
           branchCtrl.value = val;
         }
       } else {
@@ -377,29 +382,29 @@
     }
 
     staffSel.addEventListener('change', applyFromOption);
-    const wrap = branchCtrl.closest('.mb-3, .col-md-6, .form-group');
+    var wrap = branchCtrl.closest('.mb-3, .col-md-6, .form-group');
     if(wrap) wrap.style.display='none';
     applyFromOption();
   }
 
   function validateFormLocal(){
-    const form=getForm(); const saveBtn=getSaveBtn();
-    if(!form || !saveBtn){ return {ok:true, firstBad:null}; }
-    let ok=true, firstBad=null;
+    var form=getForm(); var saveBtn=getSaveBtn();
+    if(!form || !saveBtn){ return { ok: true, firstBad: null }; }
+    var ok=true, firstBad=null;
 
-    const fields=form.querySelectorAll('input, select, textarea');
-    fields.forEach(el=>{
+    var fields=form.querySelectorAll('input, select, textarea');
+    fields.forEach(function(el){
       if(el.type==='hidden' || el.offsetParent===null) return;
 
       if((el.type==='radio' || el.type==='checkbox') && el.required){
-        const group = form.querySelectorAll(`[name="${el.name}"]`);
-        const anyChecked = Array.from(group).some(i=>i.checked);
+        var group = form.querySelectorAll('[name="'+el.name+'"]');
+        var anyChecked = Array.from(group).some(function(i){return i.checked;});
         if(!anyChecked){ ok=false; if(!firstBad) firstBad=el; }
         return;
       }
 
-      const v = (el.value ?? '').toString();
-      const isEmpty = v.trim()==='';
+      var v = (el.value || '').toString();
+      var isEmpty = v.trim()==='';
 
       if((el.required && isEmpty)){
         ok=false; if(!firstBad) firstBad=el;
@@ -410,31 +415,30 @@
       }
 
       if(el.classList.contains('aadhar-input')){
-        const digits=el.value.replace(/\s/g,'');
+        var digits=el.value.replace(/\s/g,'');
         if(digits && (!/^\d{12}$/.test(digits) || !isValidAadhaar(digits))){
           ok=false; if(!firstBad) firstBad=el;
         }
       }
 
-      if(['phone','mobile','contact1','contactno','housecontactno'].includes(el.name)){
+      if(['phone','mobile','contact1','contactno','housecontactno'].indexOf(el.name) !== -1){
         if(el.value && !/^\d{10}$/.test(el.value)){
           ok=false; if(!firstBad) firstBad=el;
         }
       }
     });
 
-    // do not hard-disable; allow submit to show message box
     saveBtn.dataset.canSave = ok ? "1" : "0";
-    return {ok, firstBad};
+    return { ok: ok, firstBad: firstBad };
   }
 
-  modal.addEventListener('input', (e)=>{
+  modal.addEventListener('input', function(e){
     if(e.target.closest('#entity-form')) validateFormLocal();
   });
-  modal.addEventListener('change', (e)=>{
+  modal.addEventListener('change', function(e){
     if(e.target.closest('#entity-form')) validateFormLocal();
   });
-  modal.addEventListener('keydown', (e)=>{
+  modal.addEventListener('keydown', function(e){
     if(!e.target.closest('#entity-form')) return;
     if(e.key === 'Enter' && e.target.tagName !== 'TEXTAREA'){
       e.preventDefault();
@@ -443,35 +447,37 @@
   });
 
   function getCSRFToken(){
-    const form=getForm();
-    return form?.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+    var form=getForm();
+    var tokenInput = form ? form.querySelector('input[name="csrfmiddlewaretoken"]') : null;
+    return tokenInput ? tokenInput.value : '';
   }
 
   async function postWithFallback(fd, patterns){
-    const headers={
+    var headers={
       'X-Requested-With':'XMLHttpRequest',
       'X-CSRFToken': getCSRFToken(),
       'Accept':'application/json'
     };
-    for(const u of patterns){
+    for(var i=0;i<patterns.length;i++){
+      var u = patterns[i];
       try{
-        const resp = await fetch(u,{method:'POST',headers,body:fd,credentials:'same-origin'});
+        var resp = await fetch(u,{method:'POST',headers:headers,body:fd,credentials:'same-origin'});
 
         if(resp.status===401){
           showMessageBox('Authentication required. Redirecting to login…', null);
           try{ window.location.href = '/login/?next=' + encodeURIComponent(window.location.pathname + window.location.search); }catch(_){}
-          return {resp,data:{success:false,error:'auth'},url:u};
+          return { resp: resp, data: { success: false, error: 'auth' }, url: u };
         }
         if(resp.redirected){ window.location.href=resp.url; return null; }
 
-        const ct=resp.headers.get('content-type')||'';
-        if(!ct.includes('application/json')){
-          const text=await resp.text();
+        var ct=resp.headers.get('content-type')||'';
+        if(ct.indexOf('application/json')===-1){
+          var text=await resp.text();
           if(resp.status===404) continue;
-          return {resp,data:{success:false,error:(text||'Non-JSON response').slice(0,500)},url=u};
+          return { resp: resp, data: { success: false, error: (text||'Non-JSON response').slice(0,500) }, url: u };
         }
-        const data=await resp.json();
-        return {resp,data,url:u};
+        var data=await resp.json();
+        return { resp: resp, data: data, url: u };
       }catch(_e){ /* try next */ }
     }
     return null;
@@ -479,43 +485,46 @@
 
   async function submitEntityForm(){
     clearErrors();
-    const { ok, firstBad } = validateFormLocal();
+    var v = validateFormLocal();
+    var ok = v.ok, firstBad = v.firstBad;
     if(!ok){
       showMessageBox('Some fields are incomplete or invalid. Please correct the highlighted inputs.', firstBad ? (firstBad.id || firstBad.name) : null);
       return;
     }
 
-    const form=getForm(); const saveBtn=getSaveBtn(); if(!form || !saveBtn) return;
+    var form=getForm(); var saveBtn=getSaveBtn(); if(!form || !saveBtn) return;
 
-    const entity = getEntity();
-    const objectId = form.querySelector('input[name="object_id"]')?.value;
+    var entity = getEntity();
+    var objectIdEl = form.querySelector('input[name="object_id"]');
+    var objectId = objectIdEl ? objectIdEl.value : '';
 
-    const patterns = objectId
-      ? [`/${entity}/update/${objectId}/`, `/entities/${entity}/${objectId}/update/`, `/${entity}/update/${objectId}`]
-      : [`/${entity}/create/`, `/entities/${entity}/create/`, `/${entity}/create`];
+    var patterns = objectId
+      ? ['/'+entity+'/update/'+objectId+'/', '/entities/'+entity+'/'+objectId+'/update/', '/'+entity+'/update/'+objectId]
+      : ['/'+entity+'/create/', '/entities/'+entity+'/create/', '/'+entity+'/create'];
 
     saveBtn.disabled = true; saveBtn.innerText = 'Saving...';
 
     try{
-      const fd = new FormData(form);
-      const result = await postWithFallback(fd, patterns);
+      var fd = new FormData(form);
+      var result = await postWithFallback(fd, patterns);
 
       if(result && result.data && result.data.success){
         closeEntityModal(true);
         return;
       }
 
-      let errorHtml = '';
-      let firstErrName = null;
-      const data = result ? result.data : null;
+      var errorHtml = '';
+      var firstErrName = null;
+      var data = result ? result.data : null;
 
       if(data && data.errors){
-        Object.entries(data.errors).forEach(([name, msgs])=>{
-          if(name==='__all__'){ errorHtml += `<div>${Array.isArray(msgs)? msgs.join('<br>') : msgs}</div>`; return; }
-          const field = form.querySelector(`[name="${name}"]`) || form.querySelector(`#id_${name}`);
-          const message = (Array.isArray(msgs) ? msgs[0] : msgs) || 'Invalid value.';
+        Object.entries(data.errors).forEach(function(pair){
+          var name = pair[0], msgs = pair[1];
+          if(name==='__all__'){ errorHtml += '<div>'+(Array.isArray(msgs)? msgs.join('<br>') : msgs)+'</div>'; return; }
+          var field = form.querySelector('[name="'+name+'"]') || form.querySelector('#id_'+name);
+          var message = (Array.isArray(msgs) ? msgs[0] : msgs) || 'Invalid value.';
           if(field){ markInvalid(field, message); if(!firstErrName) firstErrName = field.id || field.name; }
-          errorHtml += `<div><strong>${name}</strong>: ${message}</div>`;
+          errorHtml += '<div><strong>'+name+'</strong>: '+message+'</div>';
         });
       }else if(data && data.error){
         errorHtml = String(data.error);
@@ -526,8 +535,8 @@
       showMessageBox(errorHtml, firstErrName);
       saveBtn.disabled = false; saveBtn.innerText = 'Save';
     }catch(err){
-      showMessageBox('Unexpected error: ' + (err?.message || err), null);
-      const s=getSaveBtn(); if(s){ s.disabled=false; s.innerText='Save'; }
+      showMessageBox('Unexpected error: ' + (err && err.message ? err.message : err), null);
+      var s=getSaveBtn(); if(s){ s.disabled=false; s.innerText='Save'; }
     }
   }
 
@@ -536,11 +545,11 @@
     return false;
   };
 
-  modal.addEventListener('click', (e)=>{
-    const btn = e.target.closest('[data-toggle-pass]');
+  modal.addEventListener('click', function(e){
+    var btn = e.target.closest && e.target.closest('[data-toggle-pass]');
     if(btn){
-      const wrap = btn.closest('.pro-passwrap');
-      const inp = wrap ? wrap.querySelector('input[type="password"], input[type="text"]') : null;
+      var wrap = btn.closest('.pro-passwrap');
+      var inp = wrap ? wrap.querySelector('input[type="password"], input[type="text"]') : null;
       if(inp){
         if(inp.type==='password'){ inp.type='text'; btn.setAttribute('aria-pressed','true'); btn.title='Hide password'; }
         else { inp.type='password'; btn.setAttribute('aria-pressed','false'); btn.title='Show password'; }
@@ -549,18 +558,26 @@
     }
   });
 
-  let mediaStream = null;
-  const camModal = document.getElementById('camera-capture-modal');
-  const camVideo = document.getElementById('cam-video');
-  const camCanvas = document.getElementById('cam-canvas');
-  const camBtnClose = document.getElementById('cam-close');
-  const camBtnCapture = document.getElementById('cam-capture');
-  let targetFileInput = null;
+  function dedupePasswordToggles(){
+    modal.querySelectorAll('.pro-passwrap').forEach(function(w){
+      var btns = w.querySelectorAll('[data-toggle-pass]');
+      for(var i=1;i<btns.length;i++) btns[i].remove();
+    });
+    modal.querySelectorAll('.toggle-password, .password-eye, .show-pass').forEach(function(el){ el.remove(); });
+  }
+
+  var mediaStream = null;
+  var camModal = document.getElementById('camera-capture-modal');
+  var camVideo = document.getElementById('cam-video');
+  var camCanvas = document.getElementById('cam-canvas');
+  var camBtnClose = document.getElementById('cam-close');
+  var camBtnCapture = document.getElementById('cam-capture');
+  var targetFileInput = null;
 
   async function openCameraSheet(){
-    const form=getForm();
+    var form=getForm();
     try{
-      targetFileInput = form?.querySelector('input[type="file"][name="photo"]');
+      targetFileInput = form && form.querySelector('input[type="file"][name="photo"]');
       if(!targetFileInput){ return; }
       mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio:false });
       camVideo.srcObject = mediaStream;
@@ -571,15 +588,15 @@
   }
   function closeCameraSheet(){
     camModal.style.display = 'none';
-    if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream = null; }
+    if(mediaStream){ mediaStream.getTracks().forEach(function(t){ t.stop(); }); mediaStream = null; }
   }
   async function captureFrameToInput(){
     if(!targetFileInput || !camVideo.videoWidth){ return; }
     camCanvas.width = camVideo.videoWidth; camCanvas.height = camVideo.videoHeight;
-    const ctx = camCanvas.getContext('2d'); ctx.drawImage(camVideo, 0, 0);
-    const blob = await new Promise(res => camCanvas.toBlob(res, 'image/jpeg', .92));
-    const file = new File([blob], `staff_photo_${Date.now()}.jpg`, { type:'image/jpeg' });
-    const dt = new DataTransfer(); dt.items.add(file); targetFileInput.files = dt.files;
+    var ctx = camCanvas.getContext('2d'); ctx.drawImage(camVideo, 0, 0);
+    var blob = await new Promise(function(res){ camCanvas.toBlob(res, 'image/jpeg', .92); });
+    var file = new File([blob], 'staff_photo_'+Date.now()+'.jpg', { type:'image/jpeg' });
+    var dt = new DataTransfer(); dt.items.add(file); targetFileInput.files = dt.files;
     closeCameraSheet();
   }
   camBtnClose.addEventListener('click', closeCameraSheet);
@@ -589,17 +606,17 @@
     wireSpecialInputs();
     hideStatusAndDefault();
     wireStaffToBranch();
-    const form=getForm();
-    const first = form?.querySelector('input:not([type=hidden]):not([readonly]), select, textarea');
+    dedupePasswordToggles();
+    var form=getForm();
+    var first = form && form.querySelector('input:not([type=hidden]):not([readonly]), select, textarea');
     if(first) first.focus();
-    // Ensure Save starts enabled; validation runs on submit
-    const s=getSaveBtn(); if(s) s.disabled=false;
+    var s=getSaveBtn(); if(s) s.disabled=false;
   }
 
-  const _origOpen = window.openEntityModal;
-  window.openEntityModal = function(e){ if(typeof _origOpen==='function') _origOpen(e); setTimeout(onModalShown,0); }
-  const _origEdit = window.editEntity;
-  window.editEntity = function(e, pk){ if(typeof _origEdit==='function') _origEdit(e, pk); setTimeout(onModalShown,0); }
+  var _origOpen = window.openEntityModal;
+  window.openEntityModal = function(e){ if(typeof _origOpen==='function') _origOpen(e); setTimeout(onModalShown,0); };
+  var _origEdit = window.editEntity;
+  window.editEntity = function(e, pk){ if(typeof _origEdit==='function') _origEdit(e, pk); setTimeout(onModalShown,0); };
 
   if(getComputedStyle(modal).display !== 'none'){ onModalShown(); }
 })();

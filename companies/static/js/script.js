@@ -3,9 +3,12 @@ document.addEventListener("DOMContentLoaded", function () {
     ensureSidebarClickCSS();     // keeps click-only sidebar behaviour
     ensureImagePreviewModal();   // make sure preview modal exists
     ensureFormLayoutCSS();       // no-scroll form + two-column/checkbox grid
-    setupGlobalEyeToggles();     // password/eye toggle fixes
-    wirePasswordEyes(document);  // inject eye buttons on existing screens
-    dedupePasswordEyes(document); // ensure only one eye per field
+
+    // unified password-eye setup
+    setupGlobalEyeToggles();
+    wirePasswordEyes(document);
+    dedupePasswordEyes(document);
+    reMaskPasswords(document);   // ⬅ ensure any plain-text passwords are masked on load
 
     const toggleBtn  = document.getElementById("sidebar-toggle");
     const sidebar    = document.getElementById("sidebar");
@@ -154,60 +157,100 @@ function showInlineLoginError(msg) {
   errDiv.setAttribute("aria-live", "assertive");
 }
 
-// ===== Password/Eye toggle (delegated toggler) ===== //
+/* ================= PASSWORD / EYE TOGGLE ================= */
+
+/* Mask any accidental text-type password inputs (on load or after fragments). */
+function reMaskPasswords(scope=document){
+  (scope || document)
+    .querySelectorAll('input.password-input, input[type="text"].password-input, .pro-passwrap input[type="text"][autocomplete="new-password"]')
+    .forEach(inp => { try { inp.type = 'password'; } catch(_){} });
+}
+
+/* Delegated toggler. Works for all injected or server-rendered eyes. */
 function setupGlobalEyeToggles() {
   document.addEventListener("click", (e) => {
-    const btn = e.target.closest(".js-eye, [data-toggle='password'], .toggle-password, .eye-icon");
+    const btn = e.target.closest(".js-eye, [data-toggle='password'], .toggle-password, .eye-icon, [data-toggle-pass]");
     if (!btn) return;
     e.preventDefault();
+
+    // Prefer nearest wrapper
+    const wrap = btn.closest(".pro-passwrap") || btn.closest(".input-group") || btn.parentElement;
+    let input = null;
+
+    // Use aria-controls or data-target if present
     const sel = btn.getAttribute("data-target") || btn.getAttribute("aria-controls");
-    let input = sel ? document.querySelector(sel) : null;
-    if (!input) input = btn.previousElementSibling && btn.previousElementSibling.tagName === "INPUT" ? btn.previousElementSibling : null;
-    if (!input) input = btn.parentElement && btn.parentElement.querySelector("input[type='password'], input[type='text']");
+    if (sel) input = document.querySelector(sel.replace(/^##?/, "#"));
+
+    if (!input && wrap) {
+      input = wrap.querySelector("input[type='password'], input[type='text'].password, input[type='text'][data-password], input.password-input");
+    }
     if (!input) return;
+
     input.type = (input.type === "password" ? "text" : "password");
-    // flip common icon classes
+
+    // Flip common icon classes without assuming a specific icon set
     btn.classList.toggle("fa-eye");
     btn.classList.toggle("fa-eye-slash");
     btn.classList.toggle("ri-eye-line");
     btn.classList.toggle("ri-eye-off-line");
+
+    // If we rendered an SVG, toggle a data-state for CSS if needed
+    btn.dataset.visible = String(input.type === "text");
   });
 }
 
-/* ===== inject eye buttons next to password inputs (no duplicates) ===== */
+/* Inject a single eye next to each password input if none exists nearby. */
 function wirePasswordEyes(root=document){
   const scope = root || document;
-  const TOGGLE_SEL = ".js-eye, [data-toggle='password'], .toggle-password, .eye-icon, button[aria-label='Toggle password visibility']";
+  const TOGGLE_SEL = ".js-eye, [data-toggle='password'], .toggle-password, .eye-icon, [data-toggle-pass]";
 
   scope.querySelectorAll('input[type="password"]').forEach((inp)=>{
     if (inp.dataset.eyeWired === "1") return;
 
-    // if a toggle already exists near this input, don't add another
-    const container =
-      inp.closest('.input-group, .form-group, .field') ||
+    // find a stable container
+    let container =
+      inp.closest('.pro-passwrap') ||
+      inp.closest('.input-group') ||
+      inp.closest('.form-group') ||
       inp.parentElement;
 
-    if (container && container.querySelector(TOGGLE_SEL)) {
+    // ensure a pro-passwrap for consistent placement
+    if (!inp.closest('.pro-passwrap')) {
+      const wrap = document.createElement("div");
+      wrap.className = "pro-passwrap";
+      wrap.style.position = "relative";
+      if (container && container !== inp.parentNode) {
+        inp.parentNode.insertBefore(wrap, inp);
+        wrap.appendChild(inp);
+        container = wrap;
+      } else {
+        inp.parentNode.insertBefore(wrap, inp);
+        wrap.appendChild(inp);
+        container = wrap;
+      }
+    } else {
+      container = inp.closest('.pro-passwrap');
+    }
+
+    // if a toggle already exists in the container, do not add
+    if (container.querySelector(TOGGLE_SEL)) {
       inp.dataset.eyeWired = "1";
       return;
     }
 
-    // ensure input has an id for aria-controls
+    // anchor id for aria-controls
     if (!inp.id) inp.id = "pw_" + Math.random().toString(36).slice(2);
 
-    // wrap input to place the eye
-    const wrapper = document.createElement("div");
-    wrapper.style.position = "relative";
-    inp.parentNode.insertBefore(wrapper, inp);
-    wrapper.appendChild(inp);
-
-    // create eye button
+    // create an accessible button
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "eye-icon"; // used by setupGlobalEyeToggles
     btn.setAttribute("aria-label", "Toggle password visibility");
     btn.setAttribute("aria-controls", "#" + inp.id);
-    btn.textContent = "👁";
+    btn.dataset.visible = "false";
+
+    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+
     Object.assign(btn.style, {
       position: "absolute",
       right: "8px",
@@ -216,38 +259,42 @@ function wirePasswordEyes(root=document){
       border: "none",
       background: "transparent",
       cursor: "pointer",
-      padding: "0",
-      fontSize: "16px",
+      padding: "4px",
       lineHeight: "1"
     });
-    wrapper.appendChild(btn);
 
+    container.appendChild(btn);
     inp.dataset.eyeWired = "1";
   });
 
   dedupePasswordEyes(scope);
 }
 
-/* ===== remove extra eye icons; keep the one closest to the input ===== */
+/* Remove extra eye icons and keep exactly one per password input. */
 function dedupePasswordEyes(root=document){
   const scope = root || document;
-  const TOGGLE_SEL = ".js-eye, [data-toggle='password'], .toggle-password, .eye-icon, button[aria-label='Toggle password visibility']";
+  const TOGGLE_SEL = ".js-eye, [data-toggle='password'], .toggle-password, .eye-icon, [data-toggle-pass]";
 
-  scope.querySelectorAll('input[type="password"], input[type="text"].password-input').forEach(inp=>{
-    const container =
-      inp.closest('.input-group, .form-group, .field') ||
-      inp.parentElement;
+  scope.querySelectorAll('input[type="password"], input[type="text"].password, input[type="text"][data-password], input.password-input').forEach(inp=>{
+    const container = inp.closest('.pro-passwrap') || inp.closest('.input-group') || inp.closest('.form-group') || inp.parentElement;
     if (!container) return;
 
     const toggles = Array.from(container.querySelectorAll(TOGGLE_SEL));
     if (toggles.length <= 1) return;
 
-    // keep the toggle rendered next to the input; remove others
     let keep = toggles.find(b => b.previousElementSibling === inp || b.nextElementSibling === inp);
     if (!keep) keep = toggles[0];
     toggles.forEach(b => { if (b !== keep) b.remove(); });
   });
+
+  // Remove any legacy outsiders
+  scope.querySelectorAll('.toggle-password, .password-eye, .show-pass').forEach(el=>{
+    const wrap = el.closest('.pro-passwrap');
+    if (!wrap) el.remove();
+  });
 }
+
+/* ================= END PASSWORD / EYE ================= */
 
 // ===== NEW helper: make sure the click-only CSS rule is present ===== //
 function ensureSidebarClickCSS() {
@@ -432,13 +479,11 @@ function attachDateMask(el){
     if (v.length >= 5) v = v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);
     else if (v.length >= 3) v = v.slice(0,2)+"/"+v.slice(2);
     e.target.value = v;
-    // live custom validity
     if (v.length === 10 && !isValidDateDDMMYYYY(v)) {
       e.target.setCustomValidity("Enter date as dd/mm/yyyy");
     } else {
       e.target.setCustomValidity("");
     }
-    // trigger any gating
     const form = e.target.form;
     if (form) {
       const saveBtn = document.getElementById("modal-save-btn");
@@ -467,16 +512,14 @@ function formatDateFields() {
     ].join(",");
 
     document.querySelectorAll(sel).forEach(input => {
-        // normalize display from yyyy-mm-dd to dd/mm/yyyy when coming from server
         if (input.value && input.value.includes("-") && /^\d{4}-\d{2}-\d{2}$/.test(input.value)) {
             const [yyyy, mm, dd] = input.value.split("-");
             input.value = `${dd}/${mm}/${yyyy}`;
         }
         input.pattern = "\\d{2}/\\d{2}/\\d{4}";
         input.placeholder = "dd/mm/yyyy";
-        input.type = "text"; // avoid native "Enter a valid date" messages
+        input.type = "text";
         attachDateMask(input);
-        // clear any native validity when user edits
         input.addEventListener("input", ()=> input.setCustomValidity(""));
     });
 }
@@ -876,6 +919,7 @@ function setupSaveButtonHandler() {
                     prepareFormValidation(f2, b2);
                     wirePasswordEyes(document.getElementById("entity-modal"));
                     dedupePasswordEyes(document.getElementById("entity-modal"));
+                    reMaskPasswords(document.getElementById("entity-modal")); // ⬅ ensure masked after replace
                     return;
                 }
                 alert("Validation failed.");
@@ -890,6 +934,7 @@ function setupSaveButtonHandler() {
                 prepareFormValidation(f2, b2);
                 wirePasswordEyes(document.getElementById("entity-modal"));
                 dedupePasswordEyes(document.getElementById("entity-modal"));
+                reMaskPasswords(document.getElementById("entity-modal")); // ⬅ ensure masked after replace
                 return;
             }
             alert("Server returned unexpected response. Reloading...");
@@ -1006,6 +1051,7 @@ function replaceModalWithHTML(html) {
     prepareFormValidation(f2, b2);
     wirePasswordEyes(fresh);
     dedupePasswordEyes(fresh);
+    reMaskPasswords(fresh); // ⬅ enforce masked on freshly injected fragment
 }
 
 // ===== Utility ===== //
@@ -1118,6 +1164,7 @@ function insertEntityModal(entity, html, mode, id) {
     prepareFormValidation(f3, b3);
     wirePasswordEyes(document.getElementById("entity-modal"));
     dedupePasswordEyes(document.getElementById("entity-modal"));
+    reMaskPasswords(document.getElementById("entity-modal")); // ⬅ mask after injection
 }
 
 // ===== Open / Edit Entity ===== //
@@ -1279,6 +1326,12 @@ function openLoginModal() {
         resetLoginModalState();
         loginModal.classList.add("show");
         loginModal.style.display = "flex";
+
+        // ensure single working eye in login form too
+        wirePasswordEyes(loginModal);
+        dedupePasswordEyes(loginModal);
+        reMaskPasswords(loginModal); // ⬅ make sure login password starts masked
+
         const u = document.getElementById("login-username");
         if (u) setTimeout(()=>u.focus(), 0);
     } else {

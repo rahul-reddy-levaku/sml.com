@@ -671,45 +671,15 @@ def entity_get(request, entity, pk=None):
         except Exception:
             pass
         if entity_lc == "userprofile":
-            try: obj.is_reports = True
-            except Exception: pass
+            try:
+                obj.is_reports = True
+            except Exception:
+                pass
         form = form_class(instance=obj, extra_fields=extra_fields)
 
-    # UserProfile staff picklist: ACTIVE & not already linked; include current on edit
+    # Build branch map for UI only; DO NOT override form's staff queryset
     staff_branch_map_json = None
     if entity_lc == "userprofile" and "staff" in form.fields:
-        qs = Staff.objects.all()
-        qs = _only_active(qs, Staff)
-
-        related_qname = None
-        try:
-            for rel in Staff._meta.related_objects:
-                if getattr(rel, "related_model", None) and rel.related_model.__name__.lower() == "userprofile":
-                    related_qname = rel.related_query_name()
-                    break
-        except Exception:
-            related_qname = None
-
-        if not related_qname:
-            try:
-                field_names = {f.name for f in Staff._meta.get_fields()}
-            except Exception:
-                field_names = set()
-            if "userprofile" in field_names:
-                related_qname = "userprofile"
-
-        if related_qname:
-            null_lookup = {f"{related_qname}__isnull": True}
-            if edit_mode and getattr(obj, "staff_id", None):
-                qs = qs.filter(Q(pk=obj.staff_id) | Q(**null_lookup))
-            else:
-                qs = qs.filter(**null_lookup)
-        else:
-            if edit_mode and getattr(obj, "staff_id", None):
-                qs = qs.filter(Q(pk=obj.staff_id))
-
-        form.fields["staff"].queryset = qs.order_by("name")
-
         try:
             smap = {}
             for s in Staff.objects.select_related("branch"):
@@ -721,7 +691,6 @@ def entity_get(request, entity, pk=None):
         except Exception:
             staff_branch_map_json = json.dumps({}, separators=(",", ":"))
 
-    # detect password fields to trigger eye-icon JS on frontend
     has_password = any(
         getattr(getattr(f, "widget", None), "input_type", "") == "password"
         for f in form.fields.values()
@@ -745,10 +714,12 @@ def entity_get(request, entity, pk=None):
         if missing_column_table:
             payload["warning"] = "Columns config table not found; rendering form without extra fields."
         if has_password:
-            payload["password_fields_present"] = True  # frontend can wire the eye icon
+            payload["password_fields_present"] = True
         return JsonResponse(payload)
     except Exception as e:
         return JsonResponse({"success": False, "error": f"Render error: {e}"}, status=400)
+
+
 
 
 # alias for older JS
