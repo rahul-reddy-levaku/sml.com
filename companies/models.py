@@ -8,6 +8,7 @@ Keeps all prior logic and adds:
 """
 # companies/models.py
 from django.db import models, connection
+from django.db.models import Q
 from django.core.validators import MinValueValidator, RegexValidator
 from django.contrib.auth.models import User as AuthUser
 try:
@@ -149,11 +150,10 @@ class Staff(AutoCodeMixin, BaseRaw):
     staffcode     = models.CharField("Empcode", max_length=50, unique=True, blank=True, null=True, db_index=True)
     name          = models.CharField(max_length=255, blank=True, null=True)
 
-    # ⚠️ Use legacy column name "branch" but reference Branch.code (string)
     branch = models.ForeignKey(
         Branch,
-        to_field="code",          # ← key change
-        db_column="branch",       # ← keep existing DB column
+        to_field="code",          # ← keep Branch.code as FK target
+        db_column="branch",       # ← legacy DB column name
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name="staff",
@@ -168,10 +168,34 @@ class Staff(AutoCodeMixin, BaseRaw):
     contact1      = models.CharField(max_length=15, blank=True, null=True, validators=[phone_validator], unique=True)
     photo         = models.ImageField(upload_to="staff_photos/", blank=True, null=True)
 
+    def __str__(self):
+        return self.name or f"Staff #{self.pk}"
+
+    # ✅ Normalize legacy truthy "active" values at save time
+    def save(self, *args, **kwargs):
+        if str(self.status).strip().lower() in {"1", "true", "active"} or self.status in (1, True):
+            self.status = "active"
+        super().save(*args, **kwargs)
+
+
 class UserProfile(BaseRaw):
-    user = models.ForeignKey(AuthUser, null=True, blank=True, on_delete=models.SET_NULL, db_column="user")
-    staff = models.ForeignKey(Staff, on_delete=models.SET_NULL, null=True, blank=True,
-                              limit_choices_to={"status": "active"})
+    user = models.ForeignKey(
+        AuthUser,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        db_column="user"
+    )
+    # ✅ Allow legacy truthy "active" values to pass FK constraint
+    staff = models.ForeignKey(
+        Staff,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        limit_choices_to=(
+            Q(status__iexact="active") |
+            Q(status="1") | Q(status=1) | Q(status=True)
+        ),
+        related_name="user_profile"
+    )
     full_name  = models.CharField(max_length=255, blank=True, null=True)
     branch     = models.ForeignKey("Branch", on_delete=models.SET_NULL, null=True, blank=True)
     department = models.CharField(max_length=100, blank=True, null=True)
@@ -195,6 +219,7 @@ class UserProfile(BaseRaw):
     def check_password(self, raw_password):
         from django.contrib.auth.hashers import check_password
         return check_password(raw_password, self.password)
+
 
 class UserPermission(BaseRaw):
     user_profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="permissions_set")
@@ -297,8 +322,15 @@ class BusinessSetting(BaseRaw):
 
 class FieldSchedule(BaseRaw):
     schedule_date = models.DateField(blank=True, null=True)
-    staff  = models.ForeignKey(Staff, to_field="staffcode", db_column="StaffCode",
-                               on_delete=models.SET_NULL, null=True, blank=True, limit_choices_to={"status": "active"})
+    # ✅ Allow legacy truthy "active" values to pass FK constraint
+    staff  = models.ForeignKey(
+        Staff, to_field="staffcode", db_column="StaffCode",
+        on_delete=models.SET_NULL, null=True, blank=True,
+        limit_choices_to=(
+            Q(status__iexact="active") |
+            Q(status="1") | Q(status=1) | Q(status=True)
+        )
+    )
     center = models.ForeignKey(Center, to_field="code", db_column="CenterCode",
                                on_delete=models.SET_NULL, null=True, blank=True)
     notes  = models.TextField(blank=True, null=True)
@@ -433,6 +465,7 @@ class AlertEvent(models.Model):
 
     def __str__(self):
         return f"{self.rule_name}:{self.object_pk}:{self.status}"
+
 
 
 

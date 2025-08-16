@@ -3,6 +3,7 @@ from django import forms
 from django.forms import TextInput, ClearableFileInput
 from django.utils.timezone import localdate
 from django.utils import timezone
+from django.db.models import ForeignKey
 
 from .models import (
     # core
@@ -51,31 +52,48 @@ class PermissiveModelChoiceField(forms.ModelChoiceField):
         "invalid_choice": "Selected value is not available.",
     }
 
+    # Ensure bound/initial values render as PK strings (prevents “None” UI edge cases)
+    def prepare_value(self, value):
+        if isinstance(value, self.queryset.model):
+            return str(value.pk)
+        return super().prepare_value(value)
+
+    # Return instance for pk/int/str
     def to_python(self, value):
         if value in self.empty_values:
             return None
         if isinstance(value, self.queryset.model):
             return value
-        # accept pk as str/int
         try:
             pk = str(value).strip()
             return self.queryset.model._base_manager.get(pk=pk)
-        except self.queryset.model.DoesNotExist:
+        except (ValueError, self.queryset.model.DoesNotExist):
             raise forms.ValidationError(self.error_messages["invalid_choice"], code="invalid_choice")
 
-    # key fix: do not require membership in self.queryset to pass validation
+    # Skip queryset-membership checks entirely
     def validate(self, value):
         if self.required and value in self.empty_values:
             raise forms.ValidationError(self.error_messages["required"], code="required")
+
+    # Allow values that resolve to an instance
+    def valid_value(self, value):
         if value in self.empty_values:
-            return
-        # if value is an instance, allow it; if pk, resolve and allow
-        if not isinstance(value, self.queryset.model):
-            try:
-                pk = str(value).strip()
-                self.queryset.model._base_manager.get(pk=pk)
-            except self.queryset.model.DoesNotExist:
-                raise forms.ValidationError(self.error_messages["invalid_choice"], code="invalid_choice")
+            return True
+        if isinstance(value, self.queryset.model):
+            return True
+        try:
+            pk = str(value).strip()
+            self.queryset.model._base_manager.get(pk=pk)
+            return True
+        except self.queryset.model.DoesNotExist:
+            return False
+
+    def clean(self, value):
+        if value in self.empty_values:
+            if self.required:
+                raise forms.ValidationError(self.error_messages["required"], code="required")
+            return None
+        return self.to_python(value)
 
 
 class ExcludeRawCSVDataForm(forms.ModelForm):
@@ -277,7 +295,7 @@ class UserProfileForm(ExcludeRawCSVDataForm):
         label="Username",
     )
 
-    # Accept posted PKs even if not in the visible queryset (CSV-friendly)
+    # Keep validation wide-open; control DISPLAY separately (below)
     staff = PermissiveModelChoiceField(
         queryset=Staff._base_manager.all(),
         required=False,
@@ -307,28 +325,45 @@ class UserProfileForm(ExcludeRawCSVDataForm):
         from django.db.models import Q
         super().__init__(*args, **kwargs)
 
+        # ⬇️ Replace the auto-built field to avoid any limit_choices_to leakage
+        self.fields["staff"] = PermissiveModelChoiceField(
+            queryset=Staff._base_manager.all(),
+            required=False,
+            error_messages={"invalid_choice": "Selected staff is not available."},
+        )
+
         edit_staff_id = getattr(self.instance, "staff_id", None)
-        # robust posted id handling (preserve logic, avoid .strip() on int)
+
+        # posted id (str/int both ok)
         raw_posted = self.data.get(self.add_prefix("staff")) or self.data.get("staff")
         posted_id = str(raw_posted).strip() if raw_posted not in (None, "") else None
 
-        # Show ONLY active & not-linked in the dropdown…
+        # Build the *display* list for the dropdown (active & not-linked)
         active_q = Q(status__iexact="active") | Q(status=1) | Q(status="1") | Q(status=True)
         linked_ids = set(
             UserProfile.objects.exclude(staff_id=edit_staff_id).values_list("staff_id", flat=True)
         )
         display_qs = Staff._base_manager.filter(active_q).exclude(id__in=linked_ids)
 
-        # …but always include the current/edit and posted ids so the form can render/submit them
+        # Ensure current/edit and posted ids show up visually too
         if edit_staff_id:
             display_qs = display_qs | Staff._base_manager.filter(pk=edit_staff_id)
         if posted_id:
             display_qs = display_qs | Staff._base_manager.filter(pk=posted_id)
 
+        display_qs = display_qs.distinct().order_by("name")
+
         if "staff" in self.fields:
-            self.fields["staff"].queryset = display_qs.distinct().order_by("name")
-            self.fields["staff"].empty_label = "— select —"
-            self.fields["staff"].error_messages["invalid_choice"] = "Selected staff is not available."
+            # IMPORTANT:
+            # 1) Keep field.queryset = ALL staff for validation (prevents “not a valid choice”)
+            # 2) Limit ONLY what is rendered by overriding widget.choices
+            field = self.fields["staff"]
+            field.queryset = Staff._base_manager.all()  # wide for validation
+            field.empty_label = "— select —"
+            field.error_messages["invalid_choice"] = "Selected staff is not available."
+            field.widget.choices = [("", "— select —")] + [
+                (str(s.pk), getattr(s, "name", f"Staff #{s.pk}")) for s in display_qs
+            ]
 
         if "is_reports" in self.fields:
             self.fields["is_reports"].initial = True
@@ -363,12 +398,33 @@ class UserProfileForm(ExcludeRawCSVDataForm):
             return staff
         if not _truthy_active(getattr(staff, "status", None)):
             raise forms.ValidationError("Selected staff is inactive.")
-        if UserProfile.objects.filter(staff_id=staff.id).exists():
+        if UserProfile.objects.filter(staff_id=staff.id).exclude(pk=getattr(self.instance, "pk", None)).exists():
             raise forms.ValidationError("Selected staff is already linked to a user profile.")
         return staff
 
     def clean(self):
         cleaned = super().clean()
+
+        # Self-heal: if staff flagged invalid but PK exists, coerce and drop error
+        try:
+            if "staff" in getattr(self, "errors", {}):
+                raw = self.data.get(self.add_prefix("staff")) or self.data.get("staff")
+                if raw not in (None, "", []):
+                    inst = Staff._base_manager.get(pk=str(raw).strip())
+                    cleaned["staff"] = inst
+                    self._errors.pop("staff", None)
+        except Staff.DoesNotExist:
+            pass
+        except Exception:
+            pass
+
+        # Optional guard: must have either staff or username
+        u = (cleaned.get("user") or (self.data.get(self.add_prefix("user")) or self.data.get("user") or "")).strip()
+        st = cleaned.get("staff")
+        if not st and not u:
+            self.add_error("staff", "Select a staff or enter a username.")
+            raise forms.ValidationError("Staff or Username is required.")
+
         try:
             if not cleaned.get("branch") and cleaned.get("staff"):
                 st = cleaned["staff"]
@@ -393,6 +449,78 @@ class UserProfileForm(ExcludeRawCSVDataForm):
             instance.save()
             self.save_m2m()
         return instance
+
+
+# ───────── NEW: User Permission Form ─────────
+class UserPermissionForm(ExcludeRawCSVDataForm):
+    user_profile = PermissiveModelChoiceField(
+        queryset=UserProfile._base_manager.all(),
+        required=True,
+        error_messages={"invalid_choice": "Selected user is not available."},
+        label="User Profile",
+    )
+
+    class Meta(ExcludeRawCSVDataForm.Meta):
+        model = UserPermission
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Order fields for usability
+        want_first = ["user_profile", "is_admin", "is_master", "is_data_entry",
+                      "is_accounting", "is_recovery_agent", "is_auditor", "is_manager", "status"]
+        ordered = [f for f in want_first if f in self.fields] + \
+                  [f for f in self.fields if f not in want_first]
+        try:
+            self.order_fields(ordered)
+        except Exception:
+            pass
+
+        # Friendly labels in the dropdown (show Staff/Name or Username instead of "UserProfile #")
+        try:
+            field = self.fields.get("user_profile")
+            if field:
+                qs = UserProfile._base_manager.select_related("staff", "branch").all()
+
+                def _label(up):
+                    name = ""
+                    try:
+                        name = (getattr(getattr(up, "staff", None), "name", "") or
+                                getattr(up, "full_name", "") or "")
+                    except Exception:
+                        pass
+                    if not name:
+                        try:
+                            ed = up.extra_data or {}
+                            name = ed.get("name") or ed.get("full_name") or ""
+                        except Exception:
+                            pass
+                    if not name:
+                        # derive username from either FK or CharField
+                        try:
+                            user_field = UserProfile._meta.get_field("user")
+                            if isinstance(user_field, ForeignKey):
+                                name = getattr(getattr(up, "user", None), "username", "") or ""
+                            else:
+                                name = getattr(up, "user", "") or ""
+                        except Exception:
+                            name = getattr(up, "user", "") or ""
+                    if not name:
+                        name = f"UserProfile #{up.pk}"
+                    # Optional branch suffix
+                    try:
+                        bname = getattr(getattr(up, "branch", None), "name", "") or ""
+                        if bname:
+                            name = f"{name} — {bname}"
+                    except Exception:
+                        pass
+                    return name
+
+                field.queryset = UserProfile._base_manager.all()  # keep wide for validation
+                field.empty_label = "— select —"
+                field.widget.choices = [("", "— select —")] + [(str(up.pk), _label(up)) for up in qs]
+        except Exception:
+            pass
 
 
 class StaffForm(ExcludeRawCSVDataForm):

@@ -4,11 +4,13 @@ document.addEventListener("DOMContentLoaded", function () {
     ensureImagePreviewModal();   // make sure preview modal exists
     ensureFormLayoutCSS();       // no-scroll form + two-column/checkbox grid
 
-    // unified password-eye setup
-    setupGlobalEyeToggles();
-    wirePasswordEyes(document);
-    dedupePasswordEyes(document);
-    reMaskPasswords(document);   // ⬅ ensure any plain-text passwords are masked on load
+    // ===== PASSWORD EYE: set up + hard guards (Amazon/Flipkart-style resilience) =====
+    addEyeCSSGuard();            // CSS guard so only FIRST toggle shows inside .pro-passwrap
+    setupGlobalEyeToggles();     // delegated click handler
+    wirePasswordEyes(document);  // ensure a single eye per field
+    dedupePasswordEyes(document);// remove extras (prefer manual)
+    reMaskPasswords(document);   // keep masked by default
+    startEyeObserver();          // MutationObserver to re-dedupe if any script injects another eye later
 
     const toggleBtn  = document.getElementById("sidebar-toggle");
     const sidebar    = document.getElementById("sidebar");
@@ -159,28 +161,49 @@ function showInlineLoginError(msg) {
 
 /* ================= PASSWORD / EYE TOGGLE ================= */
 
-/* Mask any accidental text-type password inputs (on load or after fragments). */
+/* 1) HARD CSS GUARD: only FIRST toggle inside .pro-passwrap is ever visible.
+      This survives late-injected extra eyes from other scripts/extensions. */
+function addEyeCSSGuard(){
+  if (document.getElementById("eye-guard-style")) return;
+  const s = document.createElement("style");
+  s.id = "eye-guard-style";
+  s.textContent = `
+    .pro-passwrap :is([data-toggle-pass], .eye-icon, .toggle-password, .js-eye, [data-toggle="password"]) {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pro-passwrap :is([data-toggle-pass], .eye-icon, .toggle-password, .js-eye, [data-toggle="password"]):not(:first-of-type) {
+      display: none !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+  `;
+  document.head.appendChild(s);
+}
+
+/* 2) Mask any accidental text-type password inputs (on load or after fragments). */
 function reMaskPasswords(scope=document){
   (scope || document)
-    .querySelectorAll('input.password-input, input[type="text"].password-input, .pro-passwrap input[type="text"][autocomplete="new-password"]')
+    .querySelectorAll('input.password-input, input[type="text"].password-input, .pro-passwrap input[type="text"][autocomplete="new-password"], .pro-passwrap input[type="text"][type=password i]')
     .forEach(inp => { try { inp.type = 'password'; } catch(_){} });
 }
 
-/* Delegated toggler. Works for all injected or server-rendered eyes. */
+/* 3) Delegated toggler. Works for all injected or server-rendered eyes. */
 function setupGlobalEyeToggles() {
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".js-eye, [data-toggle='password'], .toggle-password, .eye-icon, [data-toggle-pass]");
     if (!btn) return;
     e.preventDefault();
 
-    // Prefer nearest wrapper
     const wrap = btn.closest(".pro-passwrap") || btn.closest(".input-group") || btn.parentElement;
     let input = null;
 
-    // Use aria-controls or data-target if present
-    const sel = btn.getAttribute("data-target") || btn.getAttribute("aria-controls");
-    if (sel) input = document.querySelector(sel.replace(/^##?/, "#"));
-
+    const selRaw = btn.getAttribute("data-target") || btn.getAttribute("aria-controls");
+    if (selRaw) {
+      const sel = selRaw.startsWith("#") ? selRaw : ("#" + selRaw.replace(/^#/, ""));
+      input = document.querySelector(sel);
+    }
     if (!input && wrap) {
       input = wrap.querySelector("input[type='password'], input[type='text'].password, input[type='text'][data-password], input.password-input");
     }
@@ -188,67 +211,65 @@ function setupGlobalEyeToggles() {
 
     input.type = (input.type === "password" ? "text" : "password");
 
-    // Flip common icon classes without assuming a specific icon set
     btn.classList.toggle("fa-eye");
     btn.classList.toggle("fa-eye-slash");
     btn.classList.toggle("ri-eye-line");
     btn.classList.toggle("ri-eye-off-line");
 
-    // If we rendered an SVG, toggle a data-state for CSS if needed
     btn.dataset.visible = String(input.type === "text");
   });
 }
 
-/* Inject a single eye next to each password input if none exists nearby. */
+/* 4) Inject a single eye next to each password input if none exists nearby. */
 function wirePasswordEyes(root=document){
   const scope = root || document;
   const TOGGLE_SEL = ".js-eye, [data-toggle='password'], .toggle-password, .eye-icon, [data-toggle-pass]";
 
+  function isDecoyOrHidden(inp){
+    // Explicit decoys / hidden hints
+    if (inp.matches('[autocomplete="current-password"], [tabindex="-1"], [aria-hidden="true"]')) return true;
+    // Zero-sized or display:none
+    const style = window.getComputedStyle(inp);
+    if (style.display === "none" || style.visibility === "hidden") return true;
+    const r = inp.getBoundingClientRect();
+    // Off-screen decoys (e.g., left:-9999px) or effectively invisible
+    if (r.width <= 1 && r.height <= 1) return true;
+    if (r.right < 0 || r.bottom < 0 || r.top > (window.innerHeight || 0) || r.left > (window.innerWidth || 0)) return true;
+    return false;
+  }
+
   scope.querySelectorAll('input[type="password"]').forEach((inp)=>{
     if (inp.dataset.eyeWired === "1") return;
+    if (isDecoyOrHidden(inp)) { inp.dataset.eyeWired = "1"; return; } // ← skip decoys/hidden
 
-    // find a stable container
+    // Find/ensure a stable wrapper
     let container =
       inp.closest('.pro-passwrap') ||
       inp.closest('.input-group') ||
       inp.closest('.form-group') ||
       inp.parentElement;
 
-    // ensure a pro-passwrap for consistent placement
     if (!inp.closest('.pro-passwrap')) {
       const wrap = document.createElement("div");
       wrap.className = "pro-passwrap";
-      wrap.style.position = "relative";
-      if (container && container !== inp.parentNode) {
-        inp.parentNode.insertBefore(wrap, inp);
-        wrap.appendChild(inp);
-        container = wrap;
-      } else {
-        inp.parentNode.insertBefore(wrap, inp);
-        wrap.appendChild(inp);
-        container = wrap;
-      }
+      inp.parentNode.insertBefore(wrap, inp);
+      wrap.appendChild(inp);
+      container = wrap;
     } else {
       container = inp.closest('.pro-passwrap');
     }
 
-    // if a toggle already exists in the container, do not add
-    if (container.querySelector(TOGGLE_SEL)) {
-      inp.dataset.eyeWired = "1";
-      return;
-    }
+    // If a toggle already exists, don't add another
+    if (container.querySelector(TOGGLE_SEL)) { inp.dataset.eyeWired = "1"; return; }
 
-    // anchor id for aria-controls
     if (!inp.id) inp.id = "pw_" + Math.random().toString(36).slice(2);
 
-    // create an accessible button
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "eye-icon"; // used by setupGlobalEyeToggles
+    btn.className = "eye-icon";
     btn.setAttribute("aria-label", "Toggle password visibility");
     btn.setAttribute("aria-controls", "#" + inp.id);
     btn.dataset.visible = "false";
-
     btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
 
     Object.assign(btn.style, {
@@ -270,7 +291,8 @@ function wirePasswordEyes(root=document){
   dedupePasswordEyes(scope);
 }
 
-/* Remove extra eye icons and keep exactly one per password input. */
+
+/* 5) Remove extra eye icons and keep exactly one per password input. */
 function dedupePasswordEyes(root=document){
   const scope = root || document;
   const TOGGLE_SEL = ".js-eye, [data-toggle='password'], .toggle-password, .eye-icon, [data-toggle-pass]";
@@ -282,16 +304,67 @@ function dedupePasswordEyes(root=document){
     const toggles = Array.from(container.querySelectorAll(TOGGLE_SEL));
     if (toggles.length <= 1) return;
 
-    let keep = toggles.find(b => b.previousElementSibling === inp || b.nextElementSibling === inp);
-    if (!keep) keep = toggles[0];
+    let keep = toggles.find(b => b.matches('[data-toggle-pass]'))
+            || toggles.find(b => b.previousElementSibling === inp || b.nextElementSibling === inp)
+            || toggles[0];
+
     toggles.forEach(b => { if (b !== keep) b.remove(); });
   });
 
-  // Remove any legacy outsiders
+  // Kill any legacy outsiders not inside intended wrapper
   scope.querySelectorAll('.toggle-password, .password-eye, .show-pass').forEach(el=>{
-    const wrap = el.closest('.pro-passwrap');
-    if (!wrap) el.remove();
+    if (!el.closest('.pro-passwrap')) el.remove();
   });
+}
+
+/* 6) LIVE ENFORCER: if any other script injects a second eye later, clamp it. */
+let _eyeObserverStarted = false;
+function startEyeObserver(){
+  if (_eyeObserverStarted) return;
+  _eyeObserverStarted = true;
+
+  const enforce = (node) => {
+    // Only touch nodes that could contain password fields
+    if (!node || !(node.querySelectorAll)) return;
+    const scope = node.matches && (node.matches('input, .pro-passwrap, form, body') ? node : null) || node;
+    wirePasswordEyes(scope);
+    dedupePasswordEyes(scope);
+    reMaskPasswords(scope);
+  };
+
+  const mo = new MutationObserver((mutations)=>{
+    let touched = false;
+    for (const m of mutations){
+      if (m.type === "childList"){
+        m.addedNodes.forEach(n=>{
+          if (n.nodeType === 1 && (n.matches('input[type="password"], .pro-passwrap, form') || n.querySelector?.('input[type="password"], .pro-passwrap'))) {
+            touched = true;
+            enforce(n);
+          }
+        });
+      } else if (m.type === "attributes"){
+        const t = m.target;
+        if (t && t.matches && t.matches('input[type="password"]')) {
+          touched = true;
+          enforce(t.closest('.pro-passwrap') || t.parentElement || document);
+        }
+      }
+    }
+    // As a safety net, occasionally sweep the whole document if many mutations
+    if (touched === false && mutations.length > 10) {
+      enforce(document);
+    }
+  });
+
+  mo.observe(document.documentElement || document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "type"]
+  });
+
+  // One final sweep post-load (handles late scripts)
+  setTimeout(()=> { wirePasswordEyes(document); dedupePasswordEyes(document); }, 0);
 }
 
 /* ================= END PASSWORD / EYE ================= */
@@ -919,7 +992,7 @@ function setupSaveButtonHandler() {
                     prepareFormValidation(f2, b2);
                     wirePasswordEyes(document.getElementById("entity-modal"));
                     dedupePasswordEyes(document.getElementById("entity-modal"));
-                    reMaskPasswords(document.getElementById("entity-modal")); // ⬅ ensure masked after replace
+                    reMaskPasswords(document.getElementById("entity-modal"));
                     return;
                 }
                 alert("Validation failed.");
@@ -934,7 +1007,7 @@ function setupSaveButtonHandler() {
                 prepareFormValidation(f2, b2);
                 wirePasswordEyes(document.getElementById("entity-modal"));
                 dedupePasswordEyes(document.getElementById("entity-modal"));
-                reMaskPasswords(document.getElementById("entity-modal")); // ⬅ ensure masked after replace
+                reMaskPasswords(document.getElementById("entity-modal"));
                 return;
             }
             alert("Server returned unexpected response. Reloading...");
@@ -1051,7 +1124,7 @@ function replaceModalWithHTML(html) {
     prepareFormValidation(f2, b2);
     wirePasswordEyes(fresh);
     dedupePasswordEyes(fresh);
-    reMaskPasswords(fresh); // ⬅ enforce masked on freshly injected fragment
+    reMaskPasswords(fresh);
 }
 
 // ===== Utility ===== //
@@ -1164,12 +1237,12 @@ function insertEntityModal(entity, html, mode, id) {
     prepareFormValidation(f3, b3);
     wirePasswordEyes(document.getElementById("entity-modal"));
     dedupePasswordEyes(document.getElementById("entity-modal"));
-    reMaskPasswords(document.getElementById("entity-modal")); // ⬅ mask after injection
+    reMaskPasswords(document.getElementById("entity-modal"));
 }
 
 // ===== Open / Edit Entity ===== //
 function isUserPermEntity(ent) {
-    return !!String(ent || "").toLowerCase().match(/^userpermissions?$/);
+    return /^userpermissions?$/i.test(String(ent || ""));
 }
 
 function openEntityModal(entityOrEvent) {
@@ -1182,11 +1255,21 @@ function openEntityModal(entityOrEvent) {
     }
     if (!entity) { console.error("No entity provided to openEntityModal"); return; }
 
-    if (isUserPermEntity(entity)) { alert("Use the User Permissions page to manage permissions."); return; }
+    // Allow modal on the UserPermission list page, otherwise redirect there.
+    if (isUserPermEntity(entity)) {
+        const onUserPermPage = /\/userpermissions?\/?$/i.test(window.location.pathname);
+        if (!onUserPermPage) { window.location.href = "/UserPermission/"; return; }
+        // fall through to open the modal normally on /UserPermission/
+    }
 
     const base = getEntityBase(entity);
     const url = `${base}get/`;
-    fetch(url, { headers:{ "X-Requested-With":"XMLHttpRequest", "Accept": "application/json,text/html" }, credentials:"include", cache:"no-store", redirect:"follow" })
+    fetch(url, {
+        headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "application/json,text/html" },
+        credentials: "include",
+        cache: "no-store",
+        redirect: "follow"
+    })
     .then(async res => {
         if (res.status === 401 || res.status === 403 || res.redirected) { handleAuthFailure("Not authenticated."); return; }
         const ct = res.headers.get("content-type") || "";
@@ -1330,7 +1413,7 @@ function openLoginModal() {
         // ensure single working eye in login form too
         wirePasswordEyes(loginModal);
         dedupePasswordEyes(loginModal);
-        reMaskPasswords(loginModal); // ⬅ make sure login password starts masked
+        reMaskPasswords(loginModal);
 
         const u = document.getElementById("login-username");
         if (u) setTimeout(()=>u.focus(), 0);

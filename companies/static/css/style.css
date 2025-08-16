@@ -395,3 +395,25 @@ button[data-toggle-pass],
   height: 18px;
   pointer-events: none;
 }
+
+/* ====== DISABLE BROWSER BUILT-IN PASSWORD EYE/CLEAR BUTTONS ====== */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;          /* Edge/IE */
+}
+input[type="password"]::-webkit-credentials-auto-fill-button,
+input[type="password"]::-webkit-clear-button,
+input[type="password"]::-webkit-inner-spin-button,
+input[type="password"]::-webkit-textfield-decoration-container {
+  display: none !important;          /* Chromium/WebKit variants */
+}
+
+/* ====== KILL ANY STRAY BACKGROUND EYE IMAGES ON PASSWORD INPUTS ====== */
+input[type="password"] {
+  background-image: none !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  background-size: 0 !important; /* collapse any injected background icons */
+  -webkit-appearance: none;
+  appearance: none;
+}

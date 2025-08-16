@@ -46,14 +46,14 @@
                    required
                    placeholder="••••••••"
                    readonly />
-            <!-- Eye icon toggle (no text) -->
+            <!-- Single eye toggle like Amazon/Flipkart -->
             <button type="button"
                     class="pro-toggle-pass"
                     data-toggle-pass
                     aria-label="Show password"
                     title="Show password"
                     onclick="return togglePass(this)">
-              <!-- default: eye (closed) -->
+              <!-- default: eye -->
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
@@ -107,7 +107,13 @@
     opacity: 0.85;
     pointer-events: none;
   }
-  /* Make the eye button look clean */
+  /* Input + single eye toggle layout */
+  .pro-passwrap {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+  }
   .pro-toggle-pass {
     display: inline-flex;
     align-items: center;
@@ -117,20 +123,20 @@
     border-radius: 8px;
     border: 1px solid #cfd6df;
     background: #f3f6fa;
+    cursor: pointer;
   }
+  .pro-toggle-pass:focus { outline: 2px solid #3b82f6; outline-offset: 2px; }
   .pro-toggle-pass svg { display:block; }
 </style>
 
 <script>
-  /* Fallback so script.js can always show the inline error, even if the server
-     returns HTML or a redirect. If a global showInlineLoginError already exists,
-     this won't overwrite it. */
+  /* Inline error helper */
   window.showInlineLoginError = window.showInlineLoginError || function (msg) {
     var el = document.getElementById('login-error');
     if (!el) return;
     el.textContent = msg || 'Invalid credentials.';
-    el.hidden = false;              // remove [hidden]
-    el.style.display = 'block';     // defeat any CSS hiding
+    el.hidden = false;
+    el.style.display = 'block';
     el.setAttribute('role','alert');
     el.setAttribute('aria-live','assertive');
   };
@@ -179,21 +185,17 @@
       setSubmitEnabled(ok);
     }
 
-    // enable only when both fields have > 0 chars; hide error while typing
     if (u) u.addEventListener('input', function(){ updateSubmitState(); hideError(); });
     if (p) p.addEventListener('input', function(){ updateSubmitState(); hideError(); });
 
-    // initial readonly unlock on intent
     unlockOnIntent(u);
     unlockOnIntent(p);
 
-    // Wrap existing open/close so we reset to fresh state every time
     (function wrapOpenClose(){
       var _open  = window.openLoginModal;
       var _close = window.closeLoginModal;
 
       window.openLoginModal = function(){
-        // fresh state before delegating
         hideError();
         clearFields();
         setSubmitEnabled(false);
@@ -208,7 +210,6 @@
 
       window.closeLoginModal = function(){
         if (typeof _close === 'function') _close();
-        // ensure next open is clean
         hideError();
         clearFields();
         setSubmitEnabled(false);
@@ -219,21 +220,20 @@
       };
     })();
 
-    // Initial state
     hideError();
     setSubmitEnabled(false);
   })();
 
-  // Eye / Eye-off icon SVGs
+  /* Icons */
   function _eyeSVG(){ return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>'; }
   function _eyeOffSVG(){ return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.58 10.58a2 2 0 1 0 2.83 2.83"></path><path d="M16.24 16.24C14.83 17.39 13.05 18 12 18 5 18 1 12 1 12a22.82 22.82 0 0 1 6.62-5.79"></path><path d="M14.12 5.1C14.74 5.03 15.38 5 16 5c7 0 11 7 11 7a22.82 22.82 0 0 1-3.24 4.12"></path></svg>'; }
 
-  // Password toggle (icon-only; no "Hide" text)
+  /* Single password toggle */
   window.togglePass = function (btn) {
     try {
       var wrap = btn.closest('.pro-passwrap');
       if (!wrap) return false;
-      var input = wrap.querySelector('input[type="password"], input[type="text"]');
+      var input = wrap.querySelector('#login-password');
       if (!input) return false;
 
       var next = input.type === 'password' ? 'text' : 'password';

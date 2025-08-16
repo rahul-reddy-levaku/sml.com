@@ -291,15 +291,16 @@ def dashboard_view(request):
 # ────────────────────────────────────────────────────────────────────
 #  Entity utilities
 # ────────────────────────────────────────────────────────────────────
-_FAUX_ENTITIES = {"userpermission", "userpermissions"}
+# Unblocked: allow User Permissions as a normal entity
+_FAUX_ENTITIES = set()
 
 def _norm(s: str) -> str:
-    return (s or "").strip().lower().replace(" ", "").replace("_", "")
+    # normalize: remove spaces, underscores, and hyphens; lowercase
+    return (s or "").strip().lower().replace(" ", "").replace("_", "").replace("-", "")
 
 def get_model_class(entity):
     ent = (entity or "").strip()
-    if ent.lower() in _FAUX_ENTITIES:
-        return None
+    ent_clean = ent.replace("-", "").replace(" ", "")
     try:
         m = apps.get_model("companies", ent)
         if m:
@@ -307,7 +308,13 @@ def get_model_class(entity):
     except LookupError:
         pass
     try:
-        m = apps.get_model("companies", ent.title().replace("_", ""))
+        m = apps.get_model("companies", ent_clean)
+        if m:
+            return m
+    except LookupError:
+        pass
+    try:
+        m = apps.get_model("companies", ent.title().replace("_", "").replace("-", ""))
         if m:
             return m
     except LookupError:
@@ -323,17 +330,20 @@ def get_model_class(entity):
     return None
 
 def get_form_class(entity):
-    name = f"{entity.capitalize()}Form"
+    # be tolerant of dashes/underscores/case
+    ent = (entity or "")
+    ent_us = ent.replace("-", "_")
+    name = f"{ent_us.capitalize()}Form"
     form_class = globals().get(name)
     if form_class:
         return form_class
-    parts = entity.split("_")
-    camel = "".join(p.capitalize() for p in parts)
+    parts = ent_us.split("_")
+    camel = "".join(p.capitalize() for p in parts if p)
     alt_name = f"{camel}Form"
     form_class = globals().get(alt_name)
     if form_class:
         return form_class
-    lower_entity = entity.replace("_", "").lower()
+    lower_entity = ent.replace("_", "").replace("-", "").lower()
     for obj in globals().values():
         if isinstance(obj, type) and obj.__name__.lower().endswith("form"):
             candidate = obj.__name__.lower().replace("form", "")
@@ -347,10 +357,15 @@ def get_section_map(entity):
         "staff":             {"Staff Details": ["name", "joining_date", "branch"]},
         "loanapplication":   {"Loan Info": ["client", "product", "amount_requested", "applied_date"], "Meta": ["joining_date"]},
         "userprofile":       {"User Setup": ["staff", "user", "branch", "password"], "Permissions": ["is_reports"], "Status": ["status"]},
+        "userpermission":    {
+            "User":   ["user_profile"],
+            "Roles":  ["is_admin","is_master","is_data_entry","is_accounting","is_recovery_agent","is_auditor","is_manager"],
+            "Status": ["status"],
+        },
         "role":              {"Role Details": ["name"]},
         "kycdocument":       {"Document Info": ["doc_type", "number", "file", "status"], "Client": ["client_ref", "client_name"], "Notes": ["remarks"]},
         "alertrule":         {"Basics": ["name", "entity", "is_active"], "Logic": ["condition", "channels"]},
-    }.get(entity.lower(), None)
+    }.get(entity.lower().replace("-", ""), None)
 
 pretty_names = {
     "loanapplication": "Loan Application",
@@ -495,10 +510,8 @@ def _debug_delete(user, entity_lc, allowed):
 @login_required
 def entity_list(request, entity):
     entity_lc = (entity or "").lower()
-    if entity_lc in _FAUX_ENTITIES:
-        return redirect("user_permissions")
 
-    model = get_model_class(entity)
+    model = get_model_class(entity_lc)
     if model is None:
         return JsonResponse({"success": False, "error": f'Model for entity "{entity}" not found.'}, status=404)
 
@@ -513,7 +526,7 @@ def entity_list(request, entity):
 
     grouped_objects = {"All Records": objects}
     try:
-        column_fields = Column.objects.filter(module__iexact=entity_lc).order_by("order")
+        column_fields = Column.objects.filter(module__iexact=_norm(entity_lc)).order_by("order")
     except DatabaseError:
         column_fields = []
 
@@ -523,7 +536,7 @@ def entity_list(request, entity):
     context = {
         "include_template": "companies/grid_list.html",
         "entity": entity,
-        "pretty_entity": pretty_names.get(entity_lc, entity.replace("_", " ").title()),
+        "pretty_entity": pretty_names.get(_norm(entity_lc), entity.replace("_", " ").replace("-", " ").title()),
         "grouped_objects": grouped_objects,
         "column_fields": column_fields,
         "profile": profile,
@@ -541,15 +554,13 @@ def entity_list(request, entity):
 @require_POST
 def entity_create(request, entity):
     entity_lc = (entity or "").lower()
-    if entity_lc in _FAUX_ENTITIES:
-        return JsonResponse({"success": False, "error": "Use the User Permissions UI page."}, status=400)
 
-    form_class = get_form_class(entity)
+    form_class = get_form_class(entity_lc)
     if not form_class:
         return JsonResponse({"success": False, "error": f'Form class for entity "{entity}" not found.'}, status=400)
 
     try:
-        extra_fields = Column.objects.filter(module__iexact=entity_lc).order_by("order")
+        extra_fields = Column.objects.filter(module__iexact=_norm(entity_lc)).order_by("order")
     except DatabaseError as e:
         extra_fields = []
 
@@ -564,8 +575,8 @@ def entity_create(request, entity):
             instance = form.save(commit=False)
 
             # Staff: auto Empcode if missing
-            if entity_lc == "staff" and not getattr(instance, "staffcode", None):
-                model = get_model_class(entity)
+            if _norm(entity_lc) == "staff" and not getattr(instance, "staffcode", None):
+                model = get_model_class(entity_lc)
                 last = model.objects.order_by("-id").first()
                 nxt = (last.id + 1) if last else 1
                 instance.staffcode = f"STF{nxt:03d}"
@@ -583,7 +594,7 @@ def entity_create(request, entity):
                     instance.extra_data[k] = v
 
             # UserProfile: branch from staff when blank
-            if entity_lc == "userprofile" and not getattr(instance, "branch_id", None):
+            if _norm(entity_lc) == "userprofile" and not getattr(instance, "branch_id", None):
                 try:
                     if instance.staff and instance.staff.branch_id:
                         instance.branch_id = instance.staff.branch_id
@@ -607,7 +618,7 @@ def entity_create(request, entity):
             instance.save()
             form.save_m2m()
 
-            if entity_lc == "userprofile":
+            if _norm(entity_lc) == "userprofile":
                 username = (form.cleaned_data.get("user") or "").strip()
                 password = form.cleaned_data.get("password") or None
                 try:
@@ -616,6 +627,36 @@ def entity_create(request, entity):
                         instance.save(update_fields=["is_reports"])
                 except Exception: pass
                 ensure_auth_user_for_profile(instance, username, password)
+
+            # Mirror UserPermission → UserProfile and auth user
+            if _norm(entity_lc) == "userpermission":
+                up = getattr(instance, "user_profile", None)
+                if up:
+                    try:
+                        up.is_admin          = getattr(instance, "is_admin", False)
+                        up.is_master         = getattr(instance, "is_master", False)
+                        up.is_data_entry     = getattr(instance, "is_data_entry", False)
+                        up.is_accounting     = getattr(instance, "is_accounting", False)
+                        up.is_recovery_agent = getattr(instance, "is_recovery_agent", False)
+                        up.is_auditor        = getattr(instance, "is_auditor", False)
+                        up.is_manager        = getattr(instance, "is_manager", False)
+                        up.is_reports        = True
+                        up.save()
+
+                        # find username from profile
+                        try:
+                            user_field = UserProfile._meta.get_field("user")
+                            if isinstance(user_field, ForeignKey):
+                                username = getattr(getattr(up, "user", None), "username", "") or ""
+                            else:
+                                username = (getattr(up, "user", "") or "")
+                        except Exception:
+                            username = (getattr(up, "user", "") or "")
+                        if not username:
+                            username = ((up.extra_data or {}).get("auth_username") or "")
+                        ensure_auth_user_for_profile(up, username, None)
+                    except Exception:
+                        pass
 
             return JsonResponse({"success": True})
     except DatabaseError as e:
@@ -638,20 +679,16 @@ def entity_get(request, entity, pk=None):
 
     entity_lc = (entity or "").lower()
 
-    if entity_lc in _FAUX_ENTITIES:
-        html = "<div class='p-3'>Please use the <strong>User Permissions</strong> page for managing permissions.</div>"
-        return JsonResponse({"success": True, "html": html})
-
-    model = get_model_class(entity)
+    model = get_model_class(entity_lc)
     if model is None:
         return JsonResponse({"success": False, "error": f'Model for entity "{entity}" not found.'}, status=404)
 
-    form_class = get_form_class(entity)
+    form_class = get_form_class(entity_lc)
     if not form_class:
         return JsonResponse({"success": False, "error": f'Form class for entity "{entity}" not found.'}, status=400)
 
     try:
-        extra_fields = Column.objects.filter(module__iexact=entity_lc).order_by("order")
+        extra_fields = Column.objects.filter(module__iexact=_norm(entity_lc)).order_by("order")
         missing_column_table = False
     except DatabaseError:
         extra_fields = []
@@ -670,7 +707,7 @@ def entity_get(request, entity, pk=None):
             obj.code = obj._next_code() if hasattr(obj, "_next_code") else ""
         except Exception:
             pass
-        if entity_lc == "userprofile":
+        if _norm(entity_lc) == "userprofile":
             try:
                 obj.is_reports = True
             except Exception:
@@ -679,7 +716,7 @@ def entity_get(request, entity, pk=None):
 
     # Build branch map for UI only; DO NOT override form's staff queryset
     staff_branch_map_json = None
-    if entity_lc == "userprofile" and "staff" in form.fields:
+    if _norm(entity_lc) == "userprofile" and "staff" in form.fields:
         try:
             smap = {}
             for s in Staff.objects.select_related("branch"):
@@ -704,7 +741,7 @@ def entity_get(request, entity, pk=None):
                 "entity": entity,
                 "edit_mode": edit_mode,
                 "object_id": object_id,
-                "section_map": get_section_map(entity),
+                "section_map": get_section_map(entity_lc),
                 "extra_fields": extra_fields,
                 "staff_branch_map_json": staff_branch_map_json,
             },
@@ -736,20 +773,18 @@ def entity_form(request, entity):
 @require_POST
 def entity_update(request, entity, pk):
     entity_lc = (entity or "").lower()
-    if entity_lc in _FAUX_ENTITIES:
-        return JsonResponse({"success": False, "error": "Use the User Permissions UI page."}, status=400)
 
-    model = get_model_class(entity)
+    model = get_model_class(entity_lc)
     if model is None:
         return JsonResponse({"success": False, "error": f'Model for entity "{entity}" not found.'}, status=404)
 
     obj = get_object_or_404(model, pk=pk)
-    form_class = get_form_class(entity)
+    form_class = get_form_class(entity_lc)
     if not form_class:
         return JsonResponse({"success": False, "error": f'Form class for entity "{entity}" not found.'}, status=400)
 
     try:
-        extra_fields = Column.objects.filter(module__iexact=entity_lc).order_by("order")
+        extra_fields = Column.objects.filter(module__iexact=_norm(entity_lc)).order_by("order")
     except DatabaseError:
         extra_fields = []
 
@@ -773,7 +808,7 @@ def entity_update(request, entity, pk):
                 if k not in model_field_names and v is not None:
                     instance.extra_data[k] = v
 
-            if entity_lc == "userprofile" and not getattr(instance, "branch_id", None):
+            if _norm(entity_lc) == "userprofile" and not getattr(instance, "branch_id", None):
                 try:
                     if instance.staff and instance.staff.branch_id:
                         instance.branch_id = instance.staff.branch_id
@@ -796,10 +831,38 @@ def entity_update(request, entity, pk):
             instance.save()
             form.save_m2m()
 
-            if entity_lc == "userprofile":
+            if _norm(entity_lc) == "userprofile":
                 username = (form.cleaned_data.get("user") or "").strip()
                 password = form.cleaned_data.get("password") or None
                 ensure_auth_user_for_profile(instance, username, password)
+
+            if _norm(entity_lc) == "userpermission":
+                up = getattr(instance, "user_profile", None)
+                if up:
+                    try:
+                        up.is_admin          = getattr(instance, "is_admin", False)
+                        up.is_master         = getattr(instance, "is_master", False)
+                        up.is_data_entry     = getattr(instance, "is_data_entry", False)
+                        up.is_accounting     = getattr(instance, "is_accounting", False)
+                        up.is_recovery_agent = getattr(instance, "is_recovery_agent", False)
+                        up.is_auditor        = getattr(instance, "is_auditor", False)
+                        up.is_manager        = getattr(instance, "is_manager", False)
+                        up.is_reports        = True
+                        up.save()
+
+                        try:
+                            user_field = UserProfile._meta.get_field("user")
+                            if isinstance(user_field, ForeignKey):
+                                username = getattr(getattr(up, "user", None), "username", "") or ""
+                            else:
+                                username = (getattr(up, "user", "") or "")
+                        except Exception:
+                            username = (getattr(up, "user", "") or "")
+                        if not username:
+                            username = ((up.extra_data or {}).get("auth_username") or "")
+                        ensure_auth_user_for_profile(up, username, None)
+                    except Exception:
+                        pass
 
             return JsonResponse({"success": True})
     except DatabaseError as e:
@@ -821,10 +884,7 @@ def entity_delete(request, entity, pk):
     import re
     entity_lc = (entity or "").lower()
 
-    if entity_lc in _FAUX_ENTITIES:
-        return JsonResponse({"success": False, "error": "This is a settings page with no table. Use the User Permissions UI."}, status=400)
-
-    model = get_model_class(entity)
+    model = get_model_class(entity_lc)
     if model is None:
         return JsonResponse({"success": False, "error": f'Model for entity "{entity}" not found.'}, status=404)
 
@@ -872,12 +932,12 @@ def entity_delete(request, entity, pk):
                     obj.extra_data = extra
                     obj.save(update_fields=["extra_data"])
                     # User Profile should show the hint string you asked for
-                    if entity_lc in {"userprofile", "appointment", "salarystatement"}:
+                    if _norm(entity_lc) in {"userprofile", "appointment", "salarystatement"}:
                         return JsonResponse({"success": True, "soft_deleted": True, "note": "Table missing. Run migrations, then retry delete."})
                     return JsonResponse({"success": True, "soft_deleted": True})
             except Exception:
                 pass
-            if entity_lc in {"userprofile", "appointment", "salarystatement"}:
+            if _norm(entity_lc) in {"userprofile", "appointment", "salarystatement"}:
                 return JsonResponse({"success": False, "error": "Table missing. Run migrations, then retry delete."}, status=400)
             return JsonResponse({"success": False, "error": "Delete failed."}, status=400)
 

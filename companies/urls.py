@@ -14,7 +14,7 @@ urlpatterns = [
     path("next_code/",                views.next_code_view,      name="next_code"),
     path("search/client/aadhar/",     views.search_aadhar,       name="search_aadhar"),
     path("permission-group/",         views.permission_group,    name="permission_group"),
-    path("user-permissions/",         views.permission_group,    name="user_permissions"),  # dedicated UI page
+    path("user-permissions/",         views.entity_list, {"entity": "userpermission"}, name="user_permissions"),  # list + modal add
 
     # FEATURES
     path("api/credit-bureau/pull/",   views.credit_bureau_pull,  name="credit_bureau_pull"),
